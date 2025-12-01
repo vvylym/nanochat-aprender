@@ -99,7 +99,7 @@
 - [X] T038 Implement `RMSNorm` function in `crates/nanochat-model/src/norm.rs` using aprender primitives (no learnable parameters)
 - [X] T039 Implement `RotaryPositionEmbedding` in `crates/nanochat-model/src/rope.rs` using aprender's `RotaryPositionEmbedding` with precomputed frequencies
 - [X] T040 Implement QK normalization in `crates/nanochat-model/src/attention.rs` using aprender primitives (normalize queries and keys after RoPE)
-- [ ] T041 Implement `GroupedQueryAttention` in `crates/nanochat-model/src/attention.rs` using aprender's `GroupedQueryAttention` with KV cache support
+- [X] T041 Implement `GroupedQueryAttention` in `crates/nanochat-model/src/attention.rs` using aprender's `GroupedQueryAttention` with KV cache support
 - [ ] T042 Implement causal attention masking in `crates/nanochat-model/src/attention.rs` for autoregressive generation
 - [ ] T043 Implement MLP layer with ReLU² activation in `crates/nanochat-model/src/mlp.rs` using aprender's `Linear` layers and functional API for ReLU²
 - [ ] T044 Implement transformer decoder block in `crates/nanochat-model/src/gpt.rs` combining attention, MLP, and RMSNorm with pre-norm residual connections
