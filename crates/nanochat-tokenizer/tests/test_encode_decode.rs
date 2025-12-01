@@ -1,6 +1,6 @@
 //! Unit tests for encoding and decoding
 
-use nanochat_tokenizer::{BPE, Tokenizer};
+use nanochat_tokenizer::Tokenizer;
 
 #[test]
 fn test_encode_basic() {
@@ -82,8 +82,15 @@ fn test_encode_multiple_texts() {
 
 // Helper function to create a test tokenizer
 fn create_test_tokenizer() -> Tokenizer {
-    // This will be implemented properly once Tokenizer is complete
-    // For now, this is a placeholder
-    todo!("Create test tokenizer")
+    // Create a small tokenizer for testing
+    let corpus = vec![
+        "hello world",
+        "hello rust",
+        "world peace",
+        "rust is awesome",
+        "the quick brown fox",
+    ];
+    Tokenizer::train_from_iterator(corpus.iter(), 500)
+        .expect("Failed to create test tokenizer")
 }
 
