@@ -85,12 +85,12 @@
 ### Tests for Model (Write First)
 
 - [X] T029 [P] Create unit test for ModelConfig validation in `crates/nanochat-model/tests/unit/test_config.rs`
-- [ ] T030 [P] Create unit test for RMSNorm in `crates/nanochat-model/tests/unit/test_norm.rs`
-- [ ] T031 [P] Create unit test for RoPE in `crates/nanochat-model/tests/unit/test_rope.rs`
-- [ ] T032 [P] Create unit test for attention mechanism in `crates/nanochat-model/tests/unit/test_attention.rs`
-- [ ] T033 [P] Create unit test for MLP with ReLU² in `crates/nanochat-model/tests/unit/test_mlp.rs`
-- [ ] T034 [P] Create integration test for forward pass in `crates/nanochat-model/tests/integration/test_forward.rs`
-- [ ] T035 [P] Create integration test for checkpoint save/load in `crates/nanochat-model/tests/integration/test_checkpoint.rs`
+- [X] T030 [P] Create unit test for RMSNorm in `crates/nanochat-model/tests/test_norm.rs`
+- [X] T031 [P] Create unit test for RoPE in `crates/nanochat-model/tests/test_rope.rs`
+- [X] T032 [P] Create unit test for attention mechanism in `crates/nanochat-model/tests/test_attention.rs`
+- [X] T033 [P] Create unit test for MLP with ReLU² in `crates/nanochat-model/tests/test_mlp.rs`
+- [X] T034 [P] Create integration test for forward pass in `crates/nanochat-model/tests/test_forward.rs`
+- [X] T035 [P] Create integration test for checkpoint save/load in `crates/nanochat-model/tests/test_checkpoint.rs`
 
 ### Implementation for Model
 

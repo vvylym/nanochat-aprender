@@ -18,7 +18,3 @@ pub mod checkpoint;
 pub use config::GPTConfig;
 pub use gpt::GPT;
 
-// Re-export for tests
-#[cfg(test)]
-pub use config::GPTConfig as ModelConfig;
-
