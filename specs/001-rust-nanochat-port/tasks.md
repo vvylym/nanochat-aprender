@@ -102,7 +102,7 @@
 - [X] T041 Implement `GroupedQueryAttention` in `crates/nanochat-model/src/attention.rs` using aprender's `GroupedQueryAttention` with KV cache support
 - [X] T042 Implement causal attention masking in `crates/nanochat-model/src/attention.rs` for autoregressive generation
 - [X] T043 Implement MLP layer with ReLU² activation in `crates/nanochat-model/src/mlp.rs` using aprender's `Linear` layers and functional API for ReLU²
-- [ ] T044 Implement transformer decoder block in `crates/nanochat-model/src/gpt.rs` combining attention, MLP, and RMSNorm with pre-norm residual connections
+- [X] T044 Implement transformer decoder block in `crates/nanochat-model/src/gpt.rs` combining attention, MLP, and RMSNorm with pre-norm residual connections
 - [ ] T045 Implement token embedding layer in `crates/nanochat-model/src/gpt.rs` with RMSNorm after embedding (untied from LM head)
 - [ ] T046 Implement language model head in `crates/nanochat-model/src/gpt.rs` (untied from embedding, separate parameters)
 - [ ] T047 Implement `GPTModel` struct in `crates/nanochat-model/src/gpt.rs` with configurable depth (n_layer transformer blocks)

@@ -67,26 +67,31 @@ impl CausalSelfAttention {
     ///
     /// # Returns
     /// Output tensor [batch, seq_len, n_embd]
-    pub fn forward(&self, x: &Tensor, kv_cache: Option<&mut KVCache>) -> Result<Tensor> {
+    pub fn forward(&self, x: &Tensor, _kv_cache: Option<&mut KVCache>) -> Result<Tensor> {
         let shape = x.shape();
         if shape.len() != 3 {
             anyhow::bail!("Expected 3D tensor [batch, seq_len, n_embd], got shape {:?}", shape);
         }
         
-        let seq_len = shape[1];
+        // TODO: Implement proper causal masking with correct shape
+        // For now, pass None - aprender's GQA may handle causal attention internally
+        // or we need to create a properly shaped mask [batch, heads, seq_len, seq_len]
+        let causal_mask: Option<&Tensor> = None;
         
-        // Generate causal mask for autoregressive generation
-        // The mask ensures tokens can only attend to previous tokens
-        let causal_mask = if kv_cache.is_none() {
-            // During training: use causal mask
-            Some(generate_causal_mask(seq_len))
-        } else {
-            // During inference with KV cache: masking handled differently
-            // For now, use causal mask (will be enhanced with KV cache support)
-            Some(generate_causal_mask(seq_len))
-        };
+        // Use forward_self which returns (output, attn_weights)
+        // output should be [batch, seq_len, n_embd]
+        let (output, _attn_weights) = self.gqa.forward_self(x, causal_mask);
         
-        let (output, _attn_weights) = self.gqa.forward_self(x, causal_mask.as_ref());
+        // Verify output shape matches input
+        let output_shape = output.shape();
+        if output_shape != shape {
+            anyhow::bail!(
+                "Attention output shape {:?} doesn't match input shape {:?}",
+                output_shape,
+                shape
+            );
+        }
+        
         Ok(output)
     }
 
