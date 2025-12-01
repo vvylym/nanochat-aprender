@@ -97,7 +97,7 @@
 - [X] T036 Create `crates/nanochat-model/src/lib.rs` with public API exports
 - [X] T037 Implement `ModelConfig` struct in `crates/nanochat-model/src/config.rs` with validation (vocab_size, n_layer, n_head, n_kv_head, n_embd, sequence_len, dropout)
 - [X] T038 Implement `RMSNorm` function in `crates/nanochat-model/src/norm.rs` using aprender primitives (no learnable parameters)
-- [ ] T039 Implement `RotaryPositionEmbedding` in `crates/nanochat-model/src/rope.rs` using aprender's `RotaryPositionEmbedding` with precomputed frequencies
+- [X] T039 Implement `RotaryPositionEmbedding` in `crates/nanochat-model/src/rope.rs` using aprender's `RotaryPositionEmbedding` with precomputed frequencies
 - [ ] T040 Implement QK normalization in `crates/nanochat-model/src/attention.rs` using aprender primitives (normalize queries and keys after RoPE)
 - [ ] T041 Implement `GroupedQueryAttention` in `crates/nanochat-model/src/attention.rs` using aprender's `GroupedQueryAttention` with KV cache support
 - [ ] T042 Implement causal attention masking in `crates/nanochat-model/src/attention.rs` for autoregressive generation

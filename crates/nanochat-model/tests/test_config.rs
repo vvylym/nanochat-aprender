@@ -49,6 +49,7 @@ fn test_config_custom_values() {
         n_head: 16,
         n_kv_head: 8,
         n_embd: 1024,
+        dropout: 0.1,
     };
     
     assert_eq!(config.sequence_len, 2048);
@@ -57,6 +58,7 @@ fn test_config_custom_values() {
     assert_eq!(config.n_head, 16);
     assert_eq!(config.n_kv_head, 8);
     assert_eq!(config.n_embd, 1024);
+    assert_eq!(config.dropout, 0.1);
     
     // Validate divisibility
     assert_eq!(config.n_embd % config.n_head, 0);
