@@ -218,7 +218,7 @@ mod tests {
 
     #[test]
     fn test_kv_cache_creation() {
-        let mut cache = KVCache::new();
+        let cache = KVCache::new();
         assert_eq!(cache.cache.len(), 0);
     }
 }

@@ -1,6 +1,7 @@
 //! GPT model implementation
 
 use aprender::autograd::Tensor;
+use aprender::nn::{Linear, Module};
 use crate::config::GPTConfig;
 use crate::attention::{CausalSelfAttention, KVCache};
 use crate::mlp::MLP;
@@ -87,6 +88,126 @@ impl Block {
         let output = mlp_out.add(&x_after_attn);
         
         Ok(output)
+    }
+}
+
+/// Token embedding layer with RMSNorm
+///
+/// This embeds token IDs into the embedding space and applies RMSNorm.
+/// The embedding weights are untied from the language model head.
+///
+/// Note: Since aprender doesn't have an Embedding module, we implement
+/// embedding as a lookup table (weight matrix) with indexing.
+pub struct TokenEmbedding {
+    /// Embedding weight matrix: [vocab_size, n_embd]
+    /// This acts as a lookup table for token embeddings
+    weight: Tensor,
+    /// RMSNorm applied after embedding
+    norm: aprender::nn::RMSNorm,
+    /// Vocabulary size
+    vocab_size: usize,
+    /// Embedding dimension
+    n_embd: usize,
+}
+
+impl TokenEmbedding {
+    /// Create a new token embedding layer
+    ///
+    /// # Arguments
+    /// * `vocab_size` - Vocabulary size
+    /// * `n_embd` - Embedding dimension
+    pub fn new(vocab_size: usize, n_embd: usize) -> Self {
+        // Initialize embedding weights (will be learned during training)
+        // For now, use zeros - will be initialized properly during model initialization
+        let weight = Tensor::zeros(&[vocab_size, n_embd]);
+        let norm = aprender::nn::RMSNorm::without_affine(&[n_embd]);
+        
+        Self {
+            weight,
+            norm,
+            vocab_size,
+            n_embd,
+        }
+    }
+
+    /// Forward pass: embed tokens and apply RMSNorm
+    ///
+    /// # Arguments
+    /// * `token_ids` - Token IDs tensor [batch, seq_len] with values in [0, vocab_size)
+    ///
+    /// # Returns
+    /// Embedded tokens [batch, seq_len, n_embd]
+    pub fn forward(&self, token_ids: &Tensor) -> Result<Tensor> {
+        let shape = token_ids.shape();
+        if shape.len() != 2 {
+            anyhow::bail!("Expected 2D tensor [batch, seq_len], got shape {:?}", shape);
+        }
+        
+        let batch = shape[0];
+        let seq_len = shape[1];
+        
+        // Lookup embeddings: for each token_id, get the corresponding row from weight matrix
+        let token_data = token_ids.data();
+        let weight_data = self.weight.data();
+        let mut embedded_data = Vec::with_capacity(batch * seq_len * self.n_embd);
+        
+        for &token_id in token_data {
+            let token_id = token_id as usize;
+            if token_id >= self.vocab_size {
+                anyhow::bail!("Token ID {} exceeds vocabulary size {}", token_id, self.vocab_size);
+            }
+            
+            // Get embedding vector for this token
+            let offset = token_id * self.n_embd;
+            embedded_data.extend_from_slice(&weight_data[offset..offset + self.n_embd]);
+        }
+        
+        // Reshape to [batch, seq_len, n_embd]
+        let embedded = Tensor::new(&embedded_data, &[batch, seq_len, self.n_embd]);
+        
+        // Apply RMSNorm
+        let normalized = self.norm.forward(&embedded);
+        
+        Ok(normalized)
+    }
+
+    /// Get the embedding weight matrix (for parameter access)
+    pub fn weight(&self) -> &Tensor {
+        &self.weight
+    }
+}
+
+/// Language model head (untied from embedding)
+///
+/// Projects from embedding space to vocabulary space for next-token prediction.
+pub struct LanguageModelHead {
+    /// Linear projection: n_embd -> vocab_size
+    projection: aprender::nn::Linear,
+}
+
+impl LanguageModelHead {
+    /// Create a new language model head
+    ///
+    /// # Arguments
+    /// * `n_embd` - Embedding dimension
+    /// * `vocab_size` - Vocabulary size
+    pub fn new(n_embd: usize, vocab_size: usize) -> Self {
+        let projection = aprender::nn::Linear::new(n_embd, vocab_size);
+        
+        Self {
+            projection,
+        }
+    }
+
+    /// Forward pass: project embeddings to vocabulary logits
+    ///
+    /// # Arguments
+    /// * `x` - Input tensor [batch, seq_len, n_embd]
+    ///
+    /// # Returns
+    /// Logits tensor [batch, seq_len, vocab_size]
+    pub fn forward(&self, x: &Tensor) -> Result<Tensor> {
+        Ok(self.projection.forward(x))
     }
 }
 
