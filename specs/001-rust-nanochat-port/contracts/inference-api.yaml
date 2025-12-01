@@ -1,0 +1,435 @@
+openapi: 3.0.3
+info:
+  title: Nanochat Inference API (OpenAI Compatible)
+  version: 1.0.0
+  description: OpenAI-compatible REST API for nanochat inference server with streaming support
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+
+paths:
+  /v1/chat/completions:
+    post:
+      summary: Create chat completion (OpenAI compatible)
+      operationId: createChatCompletion
+      tags:
+        - Chat
+      description: |
+        Creates a chat completion for the provided messages. Compatible with OpenAI's Chat Completions API format.
+        Supports both streaming and non-streaming responses.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatCompletionRequest'
+            examples:
+              streaming:
+                $ref: '#/components/examples/ChatCompletionRequestStreaming'
+              non_streaming:
+                $ref: '#/components/examples/ChatCompletionRequestNonStreaming'
+      responses:
+        '200':
+          description: Chat completion response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCompletionResponse'
+              examples:
+                non_streaming:
+                  $ref: '#/components/examples/ChatCompletionResponseNonStreaming'
+            text/event-stream:
+              schema:
+                type: string
+                description: Server-Sent Events stream (when stream=true)
+              examples:
+                streaming:
+                  $ref: '#/components/examples/ChatCompletionStreamExample'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/models:
+    get:
+      summary: List available models (OpenAI compatible)
+      operationId: listModels
+      tags:
+        - Models
+      description: Returns a list of available models compatible with OpenAI's format
+      responses:
+        '200':
+          description: List of available models
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelsListResponse'
+
+  /health:
+    get:
+      summary: Health check endpoint
+      operationId: getHealth
+      tags:
+        - System
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+                  model_loaded:
+                    type: boolean
+                    example: true
+
+  /stats:
+    get:
+      summary: Get server statistics
+      operationId: getStats
+      tags:
+        - System
+      responses:
+        '200':
+          description: Server statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  active_sessions:
+                    type: integer
+                    example: 5
+                  total_requests:
+                    type: integer
+                    example: 1234
+                  cache_hits:
+                    type: integer
+                    example: 456
+                  cache_misses:
+                    type: integer
+                    example: 778
+
+  /cache/invalidate:
+    post:
+      summary: Invalidate inference cache
+      operationId: invalidateCache
+      tags:
+        - Cache
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pattern:
+                  type: string
+                  description: Cache key pattern to invalidate (optional, invalidates all if not provided)
+      responses:
+        '200':
+          description: Cache invalidated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invalidated_count:
+                    type: integer
+                    example: 42
+
+components:
+  schemas:
+    ChatCompletionRequest:
+      type: object
+      required:
+        - model
+        - messages
+      properties:
+        model:
+          type: string
+          description: ID of the model to use (e.g., "nanochat-d20" or "nanochat-d32")
+          example: "nanochat-d20"
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+          minItems: 1
+          maxItems: 500
+          description: Array of messages in the conversation
+        temperature:
+          type: number
+          minimum: 0.0
+          maximum: 2.0
+          default: 1.0
+          description: Sampling temperature. Higher values make output more random.
+        top_p:
+          type: number
+          minimum: 0.0
+          maximum: 1.0
+          default: 1.0
+          description: Nucleus sampling parameter. Alternative to temperature.
+        n:
+          type: integer
+          minimum: 1
+          maximum: 128
+          default: 1
+          description: Number of chat completion choices to generate
+        stream:
+          type: boolean
+          default: false
+          description: If true, stream partial message deltas back via Server-Sent Events
+        stop:
+          type: array
+          items:
+            type: string
+          description: Up to 4 sequences where the API will stop generating further tokens
+        max_tokens:
+          type: integer
+          minimum: 1
+          maximum: 4096
+          description: Maximum number of tokens to generate in the chat completion
+        presence_penalty:
+          type: number
+          minimum: -2.0
+          maximum: 2.0
+          default: 0.0
+          description: Number between -2.0 and 2.0. Positive values penalize new tokens based on whether they appear in the text so far.
+        frequency_penalty:
+          type: number
+          minimum: -2.0
+          maximum: 2.0
+          default: 0.0
+          description: Number between -2.0 and 2.0. Positive values penalize new tokens based on their existing frequency in the text so far.
+        logit_bias:
+          type: object
+          additionalProperties:
+            type: number
+          description: Modify the likelihood of specified tokens appearing in the completion
+        user:
+          type: string
+          description: A unique identifier representing your end-user (for monitoring/abuse detection)
+        # Nanochat-specific extensions (optional)
+        top_k:
+          type: integer
+          minimum: 1
+          maximum: 200
+          description: Top-k sampling parameter (nanochat extension, alternative to top_p)
+        seed:
+          type: integer
+          nullable: true
+          description: Random seed for reproducibility (nanochat extension)
+
+    ChatMessage:
+      type: object
+      required:
+        - role
+        - content
+      properties:
+        role:
+          type: string
+          enum: [system, user, assistant]
+          description: The role of the message author
+        content:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                $ref: '#/components/schemas/MessageContentPart'
+          description: The contents of the message. Can be a string or array of content parts (for multimodal support)
+        name:
+          type: string
+          description: Optional name for the message author (for function calling support)
+
+    MessageContentPart:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [text, image_url]
+        text:
+          type: string
+        image_url:
+          type: object
+          properties:
+            url:
+              type: string
+
+    ChatCompletionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the chat completion
+          example: "chatcmpl-abc123"
+        object:
+          type: string
+          enum: [chat.completion, chat.completion.chunk]
+          description: Object type (chat.completion for non-streaming, chat.completion.chunk for streaming)
+        created:
+          type: integer
+          description: Unix timestamp of when the completion was created
+          example: 1677652288
+        model:
+          type: string
+          description: Model identifier used for completion
+          example: "nanochat-d20"
+        choices:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatCompletionChoice'
+          description: List of completion choices
+        usage:
+          $ref: '#/components/schemas/CompletionUsage'
+
+    ChatCompletionChoice:
+      type: object
+      properties:
+        index:
+          type: integer
+          description: Index of the choice in the choices array
+        message:
+          $ref: '#/components/schemas/ChatMessage'
+          description: Message object (for non-streaming responses)
+        delta:
+          $ref: '#/components/schemas/ChatMessage'
+          description: Delta message object (for streaming responses)
+        finish_reason:
+          type: string
+          nullable: true
+          enum: [stop, length, content_filter, function_call, null]
+          description: Reason the completion finished (null for streaming chunks)
+
+    CompletionUsage:
+      type: object
+      properties:
+        prompt_tokens:
+          type: integer
+          description: Number of tokens in the prompt
+        completion_tokens:
+          type: integer
+          description: Number of tokens in the completion
+        total_tokens:
+          type: integer
+          description: Total number of tokens used
+
+    ModelsListResponse:
+      type: object
+      properties:
+        object:
+          type: string
+          enum: [list]
+          example: "list"
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Model'
+
+    Model:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "nanochat-d20"
+        object:
+          type: string
+          enum: [model]
+          example: "model"
+        created:
+          type: integer
+          example: 1677652288
+        owned_by:
+          type: string
+          example: "nanochat"
+        permission:
+          type: array
+          items:
+            type: object
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+              description: Error message
+            type:
+              type: string
+              description: Error type
+            param:
+              type: string
+              nullable: true
+              description: Parameter that caused the error
+            code:
+              type: string
+              nullable: true
+              description: Error code
+
+  examples:
+    ChatCompletionRequestStreaming:
+      value:
+        model: "nanochat-d20"
+        messages:
+          - role: "user"
+            content: "Write a haiku about Rust."
+        temperature: 0.8
+        top_p: 0.9
+        max_tokens: 256
+        stream: true
+
+    ChatCompletionRequestNonStreaming:
+      value:
+        model: "nanochat-d20"
+        messages:
+          - role: "system"
+            content: "You are a helpful assistant."
+          - role: "user"
+            content: "What is Rust?"
+        temperature: 0.7
+        max_tokens: 150
+        stream: false
+
+    ChatCompletionResponseNonStreaming:
+      value:
+        id: "chatcmpl-abc123"
+        object: "chat.completion"
+        created: 1677652288
+        model: "nanochat-d20"
+        choices:
+          - index: 0
+            message:
+              role: "assistant"
+              content: "Rust is a systems programming language..."
+            finish_reason: "stop"
+        usage:
+          prompt_tokens: 10
+          completion_tokens: 25
+          total_tokens: 35
+
+    ChatCompletionStreamExample:
+      value: |
+        data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","created":1677652288,"model":"nanochat-d20","choices":[{"index":0,"delta":{"role":"assistant","content":"Memory"},"finish_reason":null}]}
+        
+        data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","created":1677652288,"model":"nanochat-d20","choices":[{"index":0,"delta":{"content":" safe"},"finish_reason":null}]}
+        
+        data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","created":1677652288,"model":"nanochat-d20","choices":[{"index":0,"delta":{"content":" and"},"finish_reason":null}]}
+        
+        data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","created":1677652288,"model":"nanochat-d20","choices":[{"index":0,"delta":{"content":" fast"},"finish_reason":null}]}
+        
+        data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","created":1677652288,"model":"nanochat-d20","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+        
+        data: [DONE]

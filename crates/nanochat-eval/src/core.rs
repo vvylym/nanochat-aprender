@@ -1,0 +1,2 @@
+//! CORE benchmark implementation
+

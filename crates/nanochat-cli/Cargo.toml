@@ -1,0 +1,33 @@
+[package]
+name = "nanochat-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Command-line interface for nanochat with real-time progress"
+repository = "https://github.com/karpathy/nanochat"
+
+[[bin]]
+name = "nanochat"
+path = "src/main.rs"
+
+[dependencies]
+nanochat-model = { path = "../nanochat-model" }
+nanochat-tokenizer = { path = "../nanochat-tokenizer" }
+aprender = { workspace = true, features = ["gpu"] }
+clap = { workspace = true }
+indicatif = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+
+[features]
+default = ["gpu"]
+gpu = ["aprender/gpu"]
+cpu-only = []
+
