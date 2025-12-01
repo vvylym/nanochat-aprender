@@ -53,23 +53,23 @@
 
 ### Tests for Tokenizer (Write First)
 
-- [ ] T015 [P] [US5] Create unit test for BPE training in `crates/nanochat-tokenizer/tests/test_bpe.rs`
-- [ ] T016 [P] [US5] Create unit test for encoding/decoding in `crates/nanochat-tokenizer/tests/test_encode_decode.rs`
-- [ ] T017 [P] [US5] Create unit test for special tokens in `crates/nanochat-tokenizer/tests/test_special_tokens.rs`
-- [ ] T018 [P] [US5] Create property-based test for encode/decode round-trip in `crates/nanochat-tokenizer/tests/test_roundtrip.rs`
+- [X] T015 [P] [US5] Create unit test for BPE training in `crates/nanochat-tokenizer/tests/test_bpe.rs`
+- [X] T016 [P] [US5] Create unit test for encoding/decoding in `crates/nanochat-tokenizer/tests/test_encode_decode.rs`
+- [X] T017 [P] [US5] Create unit test for special tokens in `crates/nanochat-tokenizer/tests/test_special_tokens.rs`
+- [X] T018 [P] [US5] Create property-based test for encode/decode round-trip in `crates/nanochat-tokenizer/tests/test_roundtrip.rs`
 
 ### Implementation for Tokenizer
 
-- [ ] T019 [US5] Create `crates/nanochat-tokenizer/src/lib.rs` with public API exports
-- [ ] T020 [US5] Implement `SpecialTokens` struct in `crates/nanochat-tokenizer/src/special_tokens.rs` with BOS, EOS, PAD token definitions
-- [ ] T021 [US5] Implement `Vocabulary` struct in `crates/nanochat-tokenizer/src/vocab.rs` with token-to-ID and ID-to-token mappings
-- [ ] T022 [US5] Implement BPE training algorithm in `crates/nanochat-tokenizer/src/bpe.rs` using aprender primitives
-- [ ] T023 [US5] Implement `encode` method in `crates/nanochat-tokenizer/src/bpe.rs` to convert text to token IDs
-- [ ] T024 [US5] Implement `decode` method in `crates/nanochat-tokenizer/src/bpe.rs` to convert token IDs to text
-- [ ] T025 [US5] Implement `Tokenizer` struct in `crates/nanochat-tokenizer/src/lib.rs` combining vocab, BPE, and special tokens
-- [ ] T026 [US5] Add comprehensive documentation for all public APIs in `crates/nanochat-tokenizer/src/lib.rs`
-- [ ] T027 [US5] Add error handling for invalid inputs and edge cases in `crates/nanochat-tokenizer/src/lib.rs`
-- [ ] T028 [US5] Implement tokenizer save/load functionality using aprender's `.apr` format in `crates/nanochat-tokenizer/src/lib.rs`
+- [X] T019 [US5] Create `crates/nanochat-tokenizer/src/lib.rs` with public API exports
+- [X] T020 [US5] Implement `SpecialTokens` struct in `crates/nanochat-tokenizer/src/special_tokens.rs` with BOS, EOS, PAD token definitions
+- [X] T021 [US5] Implement `Vocabulary` struct in `crates/nanochat-tokenizer/src/vocab.rs` with token-to-ID and ID-to-token mappings
+- [X] T022 [US5] Implement BPE training algorithm in `crates/nanochat-tokenizer/src/bpe.rs` using aprender primitives
+- [X] T023 [US5] Implement `encode` method in `crates/nanochat-tokenizer/src/bpe.rs` to convert text to token IDs
+- [X] T024 [US5] Implement `decode` method in `crates/nanochat-tokenizer/src/bpe.rs` to convert token IDs to text
+- [X] T025 [US5] Implement `Tokenizer` struct in `crates/nanochat-tokenizer/src/lib.rs` combining vocab, BPE, and special tokens
+- [X] T026 [US5] Add comprehensive documentation for all public APIs in `crates/nanochat-tokenizer/src/lib.rs`
+- [X] T027 [US5] Add error handling for invalid inputs and edge cases in `crates/nanochat-tokenizer/src/lib.rs`
+- [X] T028 [US5] Implement tokenizer save/load functionality using aprender's `.apr` format in `crates/nanochat-tokenizer/src/lib.rs`
 
 **Checkpoint**: Tokenizer crate complete, all tests passing, can encode/decode text with 95%+ fidelity
 
