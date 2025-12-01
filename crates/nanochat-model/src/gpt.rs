@@ -6,7 +6,8 @@ use crate::config::GPTConfig;
 use crate::attention::{CausalSelfAttention, KVCache};
 use crate::mlp::MLP;
 use crate::norm::rms_norm;
-use crate::rope::{precompute_rotary_embeddings, apply_rotary_emb};
+// RoPE functions not yet used in forward pass
+// use crate::rope::{precompute_rotary_embeddings, apply_rotary_emb};
 use anyhow::Result;
 
 /// Tryseansformer decoder block

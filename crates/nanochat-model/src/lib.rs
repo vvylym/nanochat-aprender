@@ -34,6 +34,7 @@ pub mod checkpoint;
 // Public API exports
 pub use config::GPTConfig;
 pub use gpt::GPT;
+pub use attention::{CausalSelfAttention, apply_qk_norm, KVCache};
 
 // Re-export common types for convenience
 pub use anyhow::Result;

@@ -1,7 +1,7 @@
 //! Rotary Position Embeddings (RoPE)
 
 use aprender::autograd::Tensor;
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 /// Precompute rotary position embeddings for a given sequence length and head dimension
 ///

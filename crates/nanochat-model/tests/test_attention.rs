@@ -1,47 +1,95 @@
 //! Unit tests for attention mechanism
 
-// Note: Tests will be implemented once attention implementation is available
-// Tests cover GroupedQueryAttention (GQA), QK normalization, and causal masking
+use nanochat_model::attention::{CausalSelfAttention, apply_qk_norm, KVCache};
+use aprender::autograd::Tensor;
 
 #[test]
 fn test_attention_basic() {
     // Test basic attention computation
-    todo!("Implement once attention::grouped_query_attention is available");
+    let attn = CausalSelfAttention::new(768, 6, 6);
+    let x = Tensor::ones(&[1, 10, 768]);
+    
+    let output = attn.forward(&x, None).unwrap();
+    
+    assert_eq!(output.shape(), x.shape());
 }
 
 #[test]
 fn test_attention_gqa() {
     // Test GroupedQueryAttention with n_kv_head < n_head
-    todo!("Implement once GQA is available");
+    let attn = CausalSelfAttention::new(768, 6, 2);
+    let x = Tensor::ones(&[1, 10, 768]);
+    
+    let output = attn.forward(&x, None).unwrap();
+    
+    assert_eq!(output.shape(), x.shape());
+    assert_eq!(attn.n_head(), 6);
+    assert_eq!(attn.n_kv_head(), 2);
 }
 
 #[test]
 fn test_attention_qk_norm() {
     // Test QK normalization (normalize queries and keys after RoPE)
-    todo!("Implement once QK normalization is available");
+    let q = Tensor::ones(&[1, 2, 3, 4]);
+    let k = Tensor::ones(&[1, 2, 3, 4]);
+    
+    let (q_norm, k_norm) = apply_qk_norm(&q, &k).unwrap();
+    
+    assert_eq!(q_norm.shape(), q.shape());
+    assert_eq!(k_norm.shape(), k.shape());
 }
 
 #[test]
 fn test_attention_causal_mask() {
     // Test causal attention masking for auto-regressive generation
-    todo!("Implement once causal masking is available");
+    let attn = CausalSelfAttention::new(768, 6, 6);
+    let x = Tensor::ones(&[1, 10, 768]);
+    
+    // Forward pass should work with causal masking (handled internally)
+    let output = attn.forward(&x, None).unwrap();
+    
+    assert_eq!(output.shape(), x.shape());
 }
 
 #[test]
 fn test_attention_kv_cache() {
     // Test KV cache support for efficient inference
-    todo!("Implement once KV cache is available");
+    let attn = CausalSelfAttention::new(768, 6, 6);
+    let x = Tensor::ones(&[1, 10, 768]);
+    let mut kv_cache = KVCache::new();
+    
+    // Forward pass with KV cache
+    let output = attn.forward(&x, Some(&mut kv_cache)).unwrap();
+    
+    assert_eq!(output.shape(), x.shape());
 }
 
 #[test]
 fn test_attention_different_head_counts() {
     // Test attention with different n_head and n_kv_head configurations
-    todo!("Implement once attention is available");
+    let attn1 = CausalSelfAttention::new(768, 8, 8);
+    let attn2 = CausalSelfAttention::new(768, 8, 2);
+    let attn3 = CausalSelfAttention::new(768, 8, 4);
+    
+    let x = Tensor::ones(&[1, 10, 768]);
+    
+    let out1 = attn1.forward(&x, None).unwrap();
+    let out2 = attn2.forward(&x, None).unwrap();
+    let out3 = attn3.forward(&x, None).unwrap();
+    
+    assert_eq!(out1.shape(), x.shape());
+    assert_eq!(out2.shape(), x.shape());
+    assert_eq!(out3.shape(), x.shape());
 }
 
 #[test]
 fn test_attention_sequence_lengths() {
     // Test attention with different sequence lengths
-    todo!("Implement once attention is available");
+    let attn = CausalSelfAttention::new(768, 6, 6);
+    
+    for seq_len in [1, 5, 10, 20, 50] {
+        let x = Tensor::ones(&[1, seq_len, 768]);
+        let output = attn.forward(&x, None).unwrap();
+        assert_eq!(output.shape(), x.shape());
+    }
 }
-

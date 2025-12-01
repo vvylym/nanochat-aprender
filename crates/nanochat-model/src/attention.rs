@@ -1,7 +1,7 @@
 //! Multi-head attention with Group-Query Attention (GQA)
 
 use aprender::autograd::Tensor;
-use aprender::nn::{GroupedQueryAttention, Module, generate_causal_mask};
+use aprender::nn::{GroupedQueryAttention, Module};
 use crate::norm::rms_norm;
 use anyhow::Result;
 
