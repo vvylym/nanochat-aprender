@@ -1,7 +1,7 @@
 //! GPT model implementation
 
 use aprender::autograd::Tensor;
-use aprender::nn::{Linear, Module};
+use aprender::nn::Module;
 use crate::config::GPTConfig;
 use crate::attention::{CausalSelfAttention, KVCache};
 use crate::mlp::MLP;
@@ -9,7 +9,7 @@ use crate::norm::rms_norm;
 use crate::rope::{precompute_rotary_embeddings, apply_rotary_emb};
 use anyhow::Result;
 
-/// Transformer decoder block
+/// Tryseansformer decoder block
 ///
 /// Architecture:
 /// - Pre-norm attention: x = x + attn(norm(x))
@@ -165,7 +165,7 @@ impl TokenEmbedding {
         // Reshape to [batch, seq_len, n_embd]
         let embedded = Tensor::new(&embedded_data, &[batch, seq_len, self.n_embd]);
         
-        // Apply RMSNorm
+        // Apply RMSNorm (using Module trait)
         let normalized = self.norm.forward(&embedded);
         
         Ok(normalized)
@@ -207,19 +207,75 @@ impl LanguageModelHead {
     /// # Returns
     /// Logits tensor [batch, seq_len, vocab_size]
     pub fn forward(&self, x: &Tensor) -> Result<Tensor> {
+        use aprender::nn::Module;
         Ok(self.projection.forward(x))
     }
 }
 
-/// GPT model
+/// GPT model with configurable depth
+///
+/// Architecture:
+/// - Token embedding with RMSNorm
+/// - N transformer decoder blocks
+/// - Language model head (untied from embedding)
 pub struct GPT {
+    /// Model configuration
     config: GPTConfig,
+    /// Token embedding layer
+    wte: TokenEmbedding,
+    /// Transformer decoder blocks
+    blocks: Vec<Block>,
+    /// Language model head
+    lm_head: LanguageModelHead,
+    /// Precomputed RoPE cos/sin frequencies
+    cos: Option<Tensor>,
+    sin: Option<Tensor>,
 }
 
 impl GPT {
     /// Create a new GPT model
+    ///
+    /// # Arguments
+    /// * `config` - Model configuration
     pub fn new(config: GPTConfig) -> Self {
-        Self { config }
+        // Validate configuration
+        config.validate().expect("Invalid GPT configuration");
+
+        // Create token embedding
+        let wte = TokenEmbedding::new(config.vocab_size, config.n_embd);
+
+        // Create transformer blocks
+        let mut blocks = Vec::with_capacity(config.n_layer);
+        for layer_idx in 0..config.n_layer {
+            blocks.push(Block::new(&config, layer_idx));
+        }
+
+        // Create language model head
+        let lm_head = LanguageModelHead::new(config.n_embd, config.vocab_size);
+
+        // Precompute RoPE embeddings (will be computed on first forward pass)
+        // For now, set to None - will be computed when needed
+        let cos = None;
+        let sin = None;
+
+        Self {
+            config,
+            wte,
+            blocks,
+            lm_head,
+            cos,
+            sin,
+        }
+    }
+
+    /// Get the model configuration
+    pub fn config(&self) -> &GPTConfig {
+        &self.config
+    }
+
+    /// Get the number of layers
+    pub fn n_layer(&self) -> usize {
+        self.config.n_layer
     }
 }
 

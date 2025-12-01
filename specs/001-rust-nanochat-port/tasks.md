@@ -105,7 +105,7 @@
 - [X] T044 Implement transformer decoder block in `crates/nanochat-model/src/gpt.rs` combining attention, MLP, and RMSNorm with pre-norm residual connections
 - [X] T045 Implement token embedding layer in `crates/nanochat-model/src/gpt.rs` with RMSNorm after embedding (untied from LM head)
 - [X] T046 Implement language model head in `crates/nanochat-model/src/gpt.rs` (untied from embedding, separate parameters)
-- [ ] T047 Implement `GPTModel` struct in `crates/nanochat-model/src/gpt.rs` with configurable depth (n_layer transformer blocks)
+- [X] T047 Implement `GPTModel` struct in `crates/nanochat-model/src/gpt.rs` with configurable depth (n_layer transformer blocks)
 - [ ] T048 Implement forward pass in `crates/nanochat-model/src/gpt.rs` with KV cache support for inference
 - [ ] T049 Implement checkpoint save functionality in `crates/nanochat-model/src/checkpoint.rs` using aprender's `.apr` format (weights, config, metadata)
 - [ ] T050 Implement checkpoint load functionality in `crates/nanochat-model/src/checkpoint.rs` with integrity validation (checksum, version)
