@@ -1,7 +1,7 @@
 //! Multi-head attention with Group-Query Attention (GQA)
 
 use aprender::autograd::Tensor;
-use aprender::nn::{GroupedQueryAttention, Module};
+use aprender::nn::{GroupedQueryAttention, Module, generate_causal_mask};
 use crate::norm::rms_norm;
 use anyhow::Result;
 
@@ -59,7 +59,7 @@ impl CausalSelfAttention {
         }
     }
 
-    /// Forward pass with optional KV cache
+    /// Forward pass with optional KV cache and causal masking
     ///
     /// # Arguments
     /// * `x` - Input tensor [batch, seq_len, n_embd]
@@ -68,9 +68,25 @@ impl CausalSelfAttention {
     /// # Returns
     /// Output tensor [batch, seq_len, n_embd]
     pub fn forward(&self, x: &Tensor, kv_cache: Option<&mut KVCache>) -> Result<Tensor> {
-        // For now, use basic forward without KV cache
-        // KV cache implementation will be added in a follow-up task
-        let (output, _attn_weights) = self.gqa.forward_self(x, None);
+        let shape = x.shape();
+        if shape.len() != 3 {
+            anyhow::bail!("Expected 3D tensor [batch, seq_len, n_embd], got shape {:?}", shape);
+        }
+        
+        let seq_len = shape[1];
+        
+        // Generate causal mask for autoregressive generation
+        // The mask ensures tokens can only attend to previous tokens
+        let causal_mask = if kv_cache.is_none() {
+            // During training: use causal mask
+            Some(generate_causal_mask(seq_len))
+        } else {
+            // During inference with KV cache: masking handled differently
+            // For now, use causal mask (will be enhanced with KV cache support)
+            Some(generate_causal_mask(seq_len))
+        };
+        
+        let (output, _attn_weights) = self.gqa.forward_self(x, causal_mask.as_ref());
         Ok(output)
     }
 
