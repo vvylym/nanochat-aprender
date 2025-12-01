@@ -84,7 +84,7 @@
 
 ### Tests for Model (Write First)
 
-- [ ] T029 [P] Create unit test for ModelConfig validation in `crates/nanochat-model/tests/unit/test_config.rs`
+- [X] T029 [P] Create unit test for ModelConfig validation in `crates/nanochat-model/tests/unit/test_config.rs`
 - [ ] T030 [P] Create unit test for RMSNorm in `crates/nanochat-model/tests/unit/test_norm.rs`
 - [ ] T031 [P] Create unit test for RoPE in `crates/nanochat-model/tests/unit/test_rope.rs`
 - [ ] T032 [P] Create unit test for attention mechanism in `crates/nanochat-model/tests/unit/test_attention.rs`
