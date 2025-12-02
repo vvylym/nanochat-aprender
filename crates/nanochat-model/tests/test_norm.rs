@@ -1,7 +1,7 @@
 //! Unit tests for RMSNorm
 
-use nanochat_model::norm::rms_norm;
 use aprender::autograd::Tensor;
+use nanochat_model::norm::rms_norm;
 
 #[test]
 fn test_rms_norm_basic() {
@@ -10,7 +10,7 @@ fn test_rms_norm_basic() {
     // This is a purely functional operation with no learnable parameters
     let x = Tensor::ones(&[2, 4]);
     let result = rms_norm(&x).unwrap();
-    
+
     assert_eq!(result.shape(), x.shape());
 }
 
@@ -20,7 +20,7 @@ fn test_rms_norm_zero_input() {
     // Should handle gracefully without division by zero
     let x = Tensor::zeros(&[2, 4]);
     let result = rms_norm(&x);
-    
+
     // Should not panic, but may produce NaN/Inf which is acceptable for zero input
     assert!(result.is_ok());
 }
@@ -31,7 +31,7 @@ fn test_rms_norm_negative_values() {
     // Should work correctly (squares are always positive)
     let x = Tensor::new(&[-1.0, -2.0, 1.0, 2.0], &[2, 2]);
     let result = rms_norm(&x).unwrap();
-    
+
     assert_eq!(result.shape(), x.shape());
 }
 
@@ -41,7 +41,7 @@ fn test_rms_norm_large_values() {
     // Should not overflow
     let x = Tensor::new(&[100.0, 200.0, 300.0], &[1, 3]);
     let result = rms_norm(&x).unwrap();
-    
+
     assert_eq!(result.shape(), x.shape());
     // Result should be normalized (smaller values)
     let result_data = result.data();
@@ -54,7 +54,7 @@ fn test_rms_norm_small_values() {
     // Should not underflow
     let x = Tensor::new(&[0.001, 0.002, 0.003], &[1, 3]);
     let result = rms_norm(&x).unwrap();
-    
+
     assert_eq!(result.shape(), x.shape());
 }
 
@@ -64,7 +64,7 @@ fn test_rms_norm_nan_detection() {
     // Note: Creating NaN tensors is tricky, so we'll just test that the function exists
     let x = Tensor::ones(&[2, 4]);
     let result = rms_norm(&x).unwrap();
-    
+
     // Verify output doesn't contain NaN for normal input
     let result_data = result.data();
     assert!(!result_data.iter().any(|&x| x.is_nan()));

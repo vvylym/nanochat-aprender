@@ -1,7 +1,7 @@
 //! Rotary Position Embeddings (RoPE)
 
-use aprender::autograd::Tensor;
 use anyhow::Result;
+use aprender::autograd::Tensor;
 
 /// Precompute rotary position embeddings for a given sequence length and head dimension
 ///
@@ -20,7 +20,7 @@ pub fn precompute_rotary_embeddings(
     head_dim: usize,
     base: f32,
 ) -> Result<(Tensor, Tensor)> {
-    if head_dim % 2 != 0 {
+    if !head_dim.is_multiple_of(2) {
         anyhow::bail!("head_dim must be even for RoPE, got {}", head_dim);
     }
 
@@ -71,11 +71,14 @@ pub fn precompute_rotary_embeddings(
 pub fn apply_rotary_emb(x: &Tensor, cos: &Tensor, sin: &Tensor) -> Result<Tensor> {
     let shape = x.shape();
     if shape.len() != 4 {
-        anyhow::bail!("Expected 4D tensor [batch, n_heads, seq_len, head_dim], got shape {:?}", shape);
+        anyhow::bail!(
+            "Expected 4D tensor [batch, n_heads, seq_len, head_dim], got shape {:?}",
+            shape
+        );
     }
 
     let head_dim = shape[3];
-    if head_dim % 2 != 0 {
+    if !head_dim.is_multiple_of(2) {
         anyhow::bail!("head_dim must be even, got {}", head_dim);
     }
 
@@ -91,10 +94,18 @@ pub fn apply_rotary_emb(x: &Tensor, cos: &Tensor, sin: &Tensor) -> Result<Tensor
         anyhow::bail!("cos and sin must be 4D tensors");
     }
     if cos_shape[1] != seq_len || sin_shape[1] != seq_len {
-        anyhow::bail!("cos/sin sequence length {} doesn't match input sequence length {}", cos_shape[1], seq_len);
+        anyhow::bail!(
+            "cos/sin sequence length {} doesn't match input sequence length {}",
+            cos_shape[1],
+            seq_len
+        );
     }
     if cos_shape[3] != half_dim || sin_shape[3] != half_dim {
-        anyhow::bail!("cos/sin half_dim {} doesn't match expected {}", cos_shape[3], half_dim);
+        anyhow::bail!(
+            "cos/sin half_dim {} doesn't match expected {}",
+            cos_shape[3],
+            half_dim
+        );
     }
 
     // Get input data
@@ -108,7 +119,8 @@ pub fn apply_rotary_emb(x: &Tensor, cos: &Tensor, sin: &Tensor) -> Result<Tensor
     for b in 0..batch {
         for h in 0..n_heads {
             for s in 0..seq_len {
-                let x_offset = (b * n_heads * seq_len * head_dim) + (h * seq_len * head_dim) + (s * head_dim);
+                let x_offset =
+                    (b * n_heads * seq_len * head_dim) + (h * seq_len * head_dim) + (s * head_dim);
                 let cos_offset = s * half_dim; // cos/sin are [1, seq_len, 1, half_dim]
                 let out_offset = x_offset;
 
@@ -121,7 +133,8 @@ pub fn apply_rotary_emb(x: &Tensor, cos: &Tensor, sin: &Tensor) -> Result<Tensor
                 // Rotate: y1 = x1 * cos + x2 * sin, y2 = x1 * (-sin) + x2 * cos
                 for i in 0..half_dim {
                     output[out_offset + i] = x1[i] * cos_vals[i] + x2[i] * sin_vals[i];
-                    output[out_offset + half_dim + i] = x1[i] * (-sin_vals[i]) + x2[i] * cos_vals[i];
+                    output[out_offset + half_dim + i] =
+                        x1[i] * (-sin_vals[i]) + x2[i] * cos_vals[i];
                 }
             }
         }
@@ -137,7 +150,7 @@ mod tests {
     #[test]
     fn test_rope_precompute() {
         let (cos, sin) = precompute_rotary_embeddings(10, 64, 10000.0).unwrap();
-        
+
         assert_eq!(cos.shape(), &[1, 10, 1, 32]);
         assert_eq!(sin.shape(), &[1, 10, 1, 32]);
     }
@@ -153,9 +166,9 @@ mod tests {
         // Create input tensor [batch=1, n_heads=2, seq_len=3, head_dim=4]
         let x = Tensor::ones(&[1, 2, 3, 4]);
         let (cos, sin) = precompute_rotary_embeddings(3, 4, 10000.0).unwrap();
-        
+
         let result = apply_rotary_emb(&x, &cos, &sin).unwrap();
-        
+
         assert_eq!(result.shape(), x.shape());
     }
 }

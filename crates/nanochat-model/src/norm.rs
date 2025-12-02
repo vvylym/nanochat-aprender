@@ -1,8 +1,8 @@
 //! RMSNorm normalization
 
-use aprender::autograd::Tensor;
-use aprender::nn::{RMSNorm, Module};
 use anyhow::Result;
+use aprender::autograd::Tensor;
+use aprender::nn::{Module, RMSNorm};
 
 /// Apply RMSNorm normalization (purely functional, no learnable parameters)
 ///
@@ -23,10 +23,10 @@ pub fn rms_norm(x: &Tensor) -> Result<Tensor> {
     if shape.is_empty() {
         anyhow::bail!("Input tensor must have at least one dimension");
     }
-    
+
     let hidden_dim = shape[shape.len() - 1];
     let norm = RMSNorm::without_affine(&[hidden_dim]);
-    
+
     Ok(norm.forward(x))
 }
 
@@ -39,7 +39,7 @@ mod tests {
         // Create a simple 2D tensor: [batch_size=2, hidden_dim=4]
         let x = Tensor::ones(&[2, 4]);
         let result = rms_norm(&x).unwrap();
-        
+
         // Result should have same shape
         assert_eq!(result.shape(), x.shape());
     }

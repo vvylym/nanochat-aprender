@@ -19,4 +19,5 @@ regex = "1.10"
 [dev-dependencies]
 proptest = { workspace = true }
 pretty_assertions = { workspace = true }
+tempfile = "3.8"
 

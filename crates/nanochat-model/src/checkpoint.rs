@@ -3,16 +3,16 @@
 //! This module provides functionality to save and load model checkpoints in `.apr` format.
 //! Checkpoints include model weights, configuration, and metadata.
 
-use crate::{GPT, GPTConfig};
-use aprender::nn::serialize::{state_dict, StateDict, save_model, load_model};
+use crate::{GPTConfig, GPT};
+use anyhow::{Context, Result};
+use aprender::nn::serialize::{load_model, save_model};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use anyhow::{Context, Result};
 
 /// Checkpoint metadata containing training information
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CheckpointMetadata {
     /// Training step number
     pub step: usize,
@@ -23,17 +23,6 @@ pub struct CheckpointMetadata {
     /// Additional metadata as key-value pairs
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
-}
-
-impl Default for CheckpointMetadata {
-    fn default() -> Self {
-        Self {
-            step: 0,
-            loss: None,
-            learning_rate: None,
-            extra: HashMap::new(),
-        }
-    }
 }
 
 /// Checkpoint format version for compatibility checking
@@ -58,11 +47,15 @@ pub fn save_checkpoint<P: AsRef<Path>>(
     metadata: Option<CheckpointMetadata>,
 ) -> Result<()> {
     let path = path.as_ref();
-    
+
     // Create directory if it doesn't exist
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("Failed to create checkpoint directory: {}", parent.display()))?;
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "Failed to create checkpoint directory: {}",
+                parent.display()
+            )
+        })?;
     }
 
     // Save weights to SafeTensors format (aprender's standard)
@@ -78,7 +71,10 @@ pub fn save_checkpoint<P: AsRef<Path>>(
         learning_rate: metadata.as_ref().and_then(|m| m.learning_rate),
         extra: {
             let mut extra = HashMap::new();
-            extra.insert("version".to_string(), serde_json::Value::String(CHECKPOINT_VERSION.to_string()));
+            extra.insert(
+                "version".to_string(),
+                serde_json::Value::String(CHECKPOINT_VERSION.to_string()),
+            );
             extra.insert("config".to_string(), serde_json::to_value(model.config())?);
             if let Some(m) = metadata {
                 extra.extend(m.extra);
@@ -106,23 +102,27 @@ pub fn save_checkpoint<P: AsRef<Path>>(
 /// Returns an error if the checkpoint file cannot be read, parsed, or validated.
 pub fn load_checkpoint<P: AsRef<Path>>(path: P) -> Result<(GPT, CheckpointMetadata)> {
     let path = path.as_ref();
-    
+
     // Load metadata from JSON
     let metadata_path = path.with_extension("json");
     let json_data = fs::read_to_string(&metadata_path)
         .with_context(|| format!("Failed to read metadata file: {}", metadata_path.display()))?;
-    
-    let metadata: CheckpointMetadata = serde_json::from_str(&json_data)
-        .context("Failed to parse metadata JSON")?;
+
+    let metadata: CheckpointMetadata =
+        serde_json::from_str(&json_data).context("Failed to parse metadata JSON")?;
 
     // Extract config from metadata
-    let config_value = metadata.extra.get("config")
+    let config_value = metadata
+        .extra
+        .get("config")
         .ok_or_else(|| anyhow::anyhow!("Missing config in metadata"))?;
     let config: GPTConfig = serde_json::from_value(config_value.clone())
         .context("Failed to parse config from metadata")?;
 
     // Validate version
-    let version = metadata.extra.get("version")
+    let version = metadata
+        .extra
+        .get("version")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("Missing version in metadata"))?;
     if version != CHECKPOINT_VERSION {
@@ -144,16 +144,6 @@ pub fn load_checkpoint<P: AsRef<Path>>(path: P) -> Result<(GPT, CheckpointMetada
     Ok((model, metadata))
 }
 
-// CheckpointData is no longer needed - we use SafeTensors for weights and JSON for metadata separately
-
-/// Extract weights from a GPT model using aprender's state_dict
-fn extract_weights(_model: &GPT) -> Result<StateDict> {
-    // Use aprender's state_dict to extract all parameters
-    // Note: This is currently unused as we use save_model directly
-    // but kept for potential future use
-    Ok(state_dict(_model, ""))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -168,7 +158,7 @@ mod tests {
 
         let result = save_checkpoint(&model, &checkpoint_path, None);
         assert!(result.is_ok());
-        
+
         // Verify files were created
         assert!(checkpoint_path.with_extension("json").exists());
         assert!(checkpoint_path.with_extension("safetensors").exists());
@@ -186,10 +176,10 @@ mod tests {
 
         // Load checkpoint
         let (loaded_model, metadata) = load_checkpoint(&checkpoint_path).unwrap();
-        
+
         // Verify config matches
         assert_eq!(loaded_model.config(), model.config());
-        
+
         // Verify metadata
         assert_eq!(metadata.step, 0);
     }

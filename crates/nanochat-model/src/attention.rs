@@ -1,9 +1,9 @@
 //! Multi-head attention with Group-Query Attention (GQA)
 
-use aprender::autograd::Tensor;
-use aprender::nn::{Module, Linear};
 use crate::norm::rms_norm;
 use anyhow::Result;
+use aprender::autograd::Tensor;
+use aprender::nn::{Dropout, Linear, Module};
 
 // Helper functions to replicate aprender's internal functionality
 // These are needed because GQA's internal fields are private
@@ -43,12 +43,7 @@ fn reshape_for_attention(
 }
 
 /// Reshape tensor from attention: [batch, heads, seq, head_dim] -> [batch, seq, embed]
-fn reshape_from_attention(
-    x: &Tensor,
-    batch: usize,
-    seq_len: usize,
-    embed_dim: usize,
-) -> Tensor {
+fn reshape_from_attention(x: &Tensor, batch: usize, seq_len: usize, embed_dim: usize) -> Tensor {
     let num_heads = embed_dim / (x.shape()[2] * x.shape()[3] / seq_len);
     let head_dim = embed_dim / num_heads;
     let mut output = vec![0.0; batch * seq_len * embed_dim];
@@ -64,10 +59,7 @@ fn reshape_from_attention(
                         + h * seq_len * head_dim
                         + s * head_dim
                         + d;
-                    let out_idx = b * seq_len * embed_dim
-                        + s * embed_dim
-                        + h * head_dim
-                        + d;
+                    let out_idx = b * seq_len * embed_dim + s * embed_dim + h * head_dim + d;
                     output[out_idx] = x_data[in_idx];
                 }
             }
@@ -168,11 +160,7 @@ fn matmul_batched_4d(a: &Tensor, b: &Tensor) -> Tensor {
                     for k_idx in 0..k {
                         let a_idx = b_idx * heads * m * k + h * m * k + i * k + k_idx;
                         let b_idx_off = b_idx * heads * b_shape[2] * n + h * b_shape[2] * n;
-                        let b_idx_val = if b_shape.len() == 4 {
-                            b_idx_off + k_idx * n + j
-                        } else {
-                            b_idx_off + k_idx * n + j
-                        };
+                        let b_idx_val = b_idx_off + k_idx * n + j;
                         sum += a_data[a_idx] * b_data[b_idx_val];
                     }
                     let out_idx = b_idx * heads * m * n + h * m * n + i * n + j;
@@ -193,12 +181,8 @@ fn scale_tensor(x: &Tensor, scale: f32) -> Tensor {
 
 /// Add mask to attention scores
 fn add_mask(scores: &Tensor, mask: &Tensor) -> Tensor {
-    let data: Vec<f32> = scores
-        .data()
-        .iter()
-        .zip(mask.data().iter())
-        .map(|(&s, &m)| s + m)
-        .collect();
+    let data: Vec<f32> =
+        scores.data().iter().zip(mask.data().iter()).map(|(&s, &m)| s + m).collect();
     Tensor::new(&data, scores.shape())
 }
 
@@ -248,8 +232,7 @@ fn scaled_dot_product_attention(
     key: &Tensor,
     value: &Tensor,
     attn_mask: Option<&Tensor>,
-    dropout_p: f32,
-    training: bool,
+    dropout_layer: Option<&Dropout>,
 ) -> (Tensor, Tensor) {
     let d_k = query.shape()[query.shape().len() - 1] as f32;
     let scale = 1.0 / d_k.sqrt();
@@ -265,15 +248,20 @@ fn scaled_dot_product_attention(
             // Mask shape is [seq_len, total_seq_len], scores shape is [batch, heads, seq_len, total_seq_len]
             // We need to broadcast the mask to match scores
             let scores_shape = scores.shape();
-            let (batch, heads, q_len, k_len) = (scores_shape[0], scores_shape[1], scores_shape[2], scores_shape[3]);
+            let (batch, heads, q_len, k_len) = (
+                scores_shape[0],
+                scores_shape[1],
+                scores_shape[2],
+                scores_shape[3],
+            );
             let mask_shape = mask.shape();
             let mask_q_len = mask_shape[0];
             let mask_k_len = mask_shape[1];
-            
+
             // Create broadcasted mask: [batch, heads, q_len, k_len]
             let mut broadcasted_mask_data = vec![0.0; batch * heads * q_len * k_len];
             let mask_data = mask.data();
-            
+
             for b in 0..batch {
                 for h in 0..heads {
                     for q in 0..q_len {
@@ -290,51 +278,23 @@ fn scaled_dot_product_attention(
                     }
                 }
             }
-            
-            let broadcasted_mask = Tensor::new(&broadcasted_mask_data, &[batch, heads, q_len, k_len]);
+
+            let broadcasted_mask =
+                Tensor::new(&broadcasted_mask_data, &[batch, heads, q_len, k_len]);
             add_mask(&scores, &broadcasted_mask)
         }
         None => scores,
     };
 
     // Softmax over last dimension
-    let mut attn_weights = softmax_last_dim(&scores);
+    let attn_weights = softmax_last_dim(&scores);
 
-    // Apply dropout if training (inverted dropout)
-    if training && dropout_p > 0.0 {
-        let attn_data = attn_weights.data();
-        let shape = attn_weights.shape();
-        let mut dropped_data = Vec::with_capacity(attn_data.len());
-        
-        // Scale factor for inverted dropout: 1 / (1 - p)
-        let scale = 1.0 / (1.0 - dropout_p);
-        
-        // Use a simple RNG based on current time and data values for reproducibility
-        // In production, you'd want a proper RNG, but for now this works
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-        let mut hasher = DefaultHasher::new();
-        attn_data.iter().take(100).for_each(|&x| {
-            let bits = x.to_bits();
-            bits.hash(&mut hasher);
-        });
-        let mut seed = hasher.finish();
-        
-        for &val in attn_data {
-            // Simple LCG for random number generation
-            seed = seed.wrapping_mul(1103515245).wrapping_add(12345);
-            let rand_val = (seed >> 16) as f32 / 65536.0;
-            
-            // Apply dropout: set to 0 with probability p, scale by 1/(1-p) otherwise
-            if rand_val < dropout_p {
-                dropped_data.push(0.0);
-            } else {
-                dropped_data.push(val * scale);
-            }
-        }
-        
-        attn_weights = Tensor::new(&dropped_data, shape);
-    }
+    // Apply dropout using aprender's Dropout layer (if provided)
+    let attn_weights = if let Some(dropout) = dropout_layer {
+        dropout.forward(&attn_weights)
+    } else {
+        attn_weights
+    };
 
     // Weighted sum: attn_weights @ V
     let output = matmul_batched_4d(&attn_weights, value);
@@ -348,14 +308,18 @@ fn slice_rope(rope: &Tensor, seq_len: usize) -> Result<Tensor> {
     if shape.len() != 4 {
         anyhow::bail!("Expected 4D RoPE tensor, got shape {:?}", shape);
     }
-    
+
     let max_seq_len = shape[1];
     let half_dim = shape[3];
-    
+
     if seq_len > max_seq_len {
-        anyhow::bail!("Requested seq_len {} exceeds max_seq_len {}", seq_len, max_seq_len);
+        anyhow::bail!(
+            "Requested seq_len {} exceeds max_seq_len {}",
+            seq_len,
+            max_seq_len
+        );
     }
-    
+
     // Extract slice: [1, seq_len, 1, half_dim]
     let rope_data = rope.data();
     let slice_data: Vec<f32> = rope_data[..seq_len * half_dim].to_vec();
@@ -378,7 +342,7 @@ pub fn apply_qk_norm(q: &Tensor, k: &Tensor) -> Result<(Tensor, Tensor)> {
     // This is done after RoPE in the attention mechanism
     let q_norm = rms_norm(q)?;
     let k_norm = rms_norm(k)?;
-    
+
     Ok((q_norm, k_norm))
 }
 
@@ -403,8 +367,8 @@ pub struct CausalSelfAttention {
     head_dim: usize,
     /// Embedding dimension
     n_embd: usize,
-    /// Dropout probability
-    dropout_p: f32,
+    /// Dropout layer (None if dropout_p == 0.0)
+    dropout_layer: Option<Dropout>,
     /// Training mode
     training: bool,
 }
@@ -416,10 +380,29 @@ impl CausalSelfAttention {
     /// * `n_embd` - Embedding dimension
     /// * `n_head` - Number of query heads
     /// * `n_kv_head` - Number of key/value heads (for GQA)
-    pub fn new(n_embd: usize, n_head: usize, n_kv_head: usize) -> Self {
+    /// * `dropout_p` - Dropout probability (0.0 = no dropout)
+    /// * `seed` - Optional random seed for reproducibility (None = non-deterministic)
+    pub fn new(
+        n_embd: usize,
+        n_head: usize,
+        n_kv_head: usize,
+        dropout_p: Option<f32>,
+        seed: Option<u64>,
+    ) -> Self {
         let head_dim = n_embd / n_head;
         let kv_dim = n_kv_head * head_dim;
-        
+
+        // Create dropout layer if needed (dropout_p will be set via with_dropout if needed)
+        let dropout_layer = if let Some(dropout_p) = dropout_p {
+            match (dropout_p, seed) {
+                (dropout_p, Some(s)) if dropout_p > 0.0 => Some(Dropout::with_seed(dropout_p, s)),
+                (dropout_p, None) if dropout_p > 0.0 => Some(Dropout::new(dropout_p)),
+                _ => None,
+            }
+        } else {
+            None
+        };
+
         Self {
             q_proj: Linear::new(n_embd, n_embd),
             k_proj: Linear::new(n_embd, kv_dim),
@@ -429,8 +412,20 @@ impl CausalSelfAttention {
             n_kv_head,
             head_dim,
             n_embd,
-            dropout_p: 0.0,
+            dropout_layer,
             training: true,
+        }
+    }
+
+    /// Set training mode
+    pub fn set_training(&mut self, training: bool) {
+        self.training = training;
+        if let Some(ref mut dropout) = self.dropout_layer {
+            if training {
+                dropout.train();
+            } else {
+                dropout.eval();
+            }
         }
     }
 
@@ -453,24 +448,27 @@ impl CausalSelfAttention {
     ) -> Result<Tensor> {
         let shape = x.shape();
         if shape.len() != 3 {
-            anyhow::bail!("Expected 3D tensor [batch, seq_len, n_embd], got shape {:?}", shape);
+            anyhow::bail!(
+                "Expected 3D tensor [batch, seq_len, n_embd], got shape {:?}",
+                shape
+            );
         }
-        
+
         let batch_size = shape[0];
         let seq_len = shape[1];
-        
+
         // Project Q, K, V
         let q = self.q_proj.forward(x);
         let k = self.k_proj.forward(x);
         let v = self.v_proj.forward(x);
-        
+
         // Reshape Q: [batch, seq, embed] -> [batch, num_heads, seq, head_dim]
         let q = reshape_for_attention(&q, batch_size, seq_len, self.n_head, self.head_dim);
-        
+
         // Reshape K, V: [batch, seq, kv_dim] -> [batch, num_kv_heads, seq, head_dim]
         let k = reshape_for_attention(&k, batch_size, seq_len, self.n_kv_head, self.head_dim);
         let v = reshape_for_attention(&v, batch_size, seq_len, self.n_kv_head, self.head_dim);
-        
+
         // Handle KV cache if provided
         let (k_use, v_use, total_seq_len) = if let Some(cache) = kv_cache {
             // Insert new K/V into cache and get concatenated result
@@ -481,22 +479,22 @@ impl CausalSelfAttention {
             // No cache - use current K/V directly
             (k, v, seq_len)
         };
-        
+
         // Expand K, V to match Q heads by repeating (for GQA)
         let groups = self.n_head / self.n_kv_head;
         let k_expanded = repeat_kv_heads(&k_use, groups);
         let v_expanded = repeat_kv_heads(&v_use, groups);
-        
+
         // Apply RoPE to Q and K if provided
         let (q_rope, k_rope) = if let Some((cos, sin)) = cos_sin {
             // Slice RoPE embeddings to current sequence length
             // cos/sin are [1, max_seq_len, 1, head_dim/2]
             // We need [1, seq_len, 1, head_dim/2] for Q and [1, total_seq_len, 1, head_dim/2] for K
-            let cos_q = slice_rope(&cos, seq_len)?;
-            let sin_q = slice_rope(&sin, seq_len)?;
-            let cos_k = slice_rope(&cos, total_seq_len)?;
-            let sin_k = slice_rope(&sin, total_seq_len)?;
-            
+            let cos_q = slice_rope(cos, seq_len)?;
+            let sin_q = slice_rope(sin, seq_len)?;
+            let cos_k = slice_rope(cos, total_seq_len)?;
+            let sin_k = slice_rope(sin, total_seq_len)?;
+
             // Apply RoPE to Q and K
             let q_rope = crate::rope::apply_rotary_emb(&q, &cos_q, &sin_q)?;
             let k_rope = crate::rope::apply_rotary_emb(&k_expanded, &cos_k, &sin_k)?;
@@ -505,10 +503,10 @@ impl CausalSelfAttention {
             // No RoPE - use Q and K directly
             (q, k_expanded)
         };
-        
+
         // Apply QK normalization
         let (q_norm, k_norm) = apply_qk_norm(&q_rope, &k_rope)?;
-        
+
         // Create causal mask for attention
         // Mask shape needs to match scores: [batch, heads, seq_len, total_seq_len]
         // But create_causal_mask creates [seq_len, total_seq_len], so we'll handle broadcasting
@@ -519,23 +517,28 @@ impl CausalSelfAttention {
         } else {
             None
         };
-        
+
         // Compute scaled dot-product attention
+        // Pass dropout layer if training and dropout is enabled
+        let dropout_ref = if self.training {
+            self.dropout_layer.as_ref()
+        } else {
+            None
+        };
         let (attn_output, _attn_weights) = scaled_dot_product_attention(
             &q_norm,
             &k_norm,
             &v_expanded,
             causal_mask.as_ref(),
-            self.dropout_p,
-            self.training,
+            dropout_ref,
         );
-        
+
         // Reshape back: [batch, heads, seq, head_dim] -> [batch, seq, embed]
         let attn_output = reshape_from_attention(&attn_output, batch_size, seq_len, self.n_embd);
-        
+
         // Output projection
         let output = self.out_proj.forward(&attn_output);
-        
+
         Ok(output)
     }
 
@@ -567,6 +570,7 @@ impl Module for CausalSelfAttention {
         params.extend(self.k_proj.parameters());
         params.extend(self.v_proj.parameters());
         params.extend(self.out_proj.parameters());
+        // Dropout has no learnable parameters
         params
     }
 
@@ -576,6 +580,7 @@ impl Module for CausalSelfAttention {
         params.extend(self.k_proj.parameters_mut());
         params.extend(self.v_proj.parameters_mut());
         params.extend(self.out_proj.parameters_mut());
+        // Dropout has no learnable parameters
         params
     }
 }
@@ -592,9 +597,7 @@ pub struct KVCache {
 impl KVCache {
     /// Create a new empty KV cache
     pub fn new() -> Self {
-        Self {
-            cache: Vec::new(),
-        }
+        Self { cache: Vec::new() }
     }
 
     /// Insert new keys and values into the cache for a given layer
@@ -606,7 +609,12 @@ impl KVCache {
     ///
     /// # Returns
     /// Concatenated (k, v) tensors including cached values
-    pub fn insert_kv(&mut self, layer_idx: usize, k: Tensor, v: Tensor) -> Result<(Tensor, Tensor)> {
+    pub fn insert_kv(
+        &mut self,
+        layer_idx: usize,
+        k: Tensor,
+        v: Tensor,
+    ) -> Result<(Tensor, Tensor)> {
         // Ensure cache has enough layers
         while self.cache.len() <= layer_idx {
             // Create empty tensors for this layer
@@ -615,7 +623,7 @@ impl KVCache {
         }
 
         let (cached_k, cached_v) = &self.cache[layer_idx];
-        
+
         // If cache is empty, just store the new k, v
         if cached_k.shape().is_empty() || cached_k.shape()[0] == 0 {
             self.cache[layer_idx] = (k.clone(), v.clone());
@@ -627,33 +635,40 @@ impl KVCache {
         let k_shape = cached_k.shape();
         let v_shape = cached_v.shape();
         let new_k_shape = k.shape();
-        
+
         // Verify shapes are compatible (batch, heads, head_dim must match)
         if k_shape.len() != 4 || new_k_shape.len() != 4 {
-            anyhow::bail!("Expected 4D tensors for K/V cache, got shapes {:?} and {:?}", k_shape, new_k_shape);
+            anyhow::bail!(
+                "Expected 4D tensors for K/V cache, got shapes {:?} and {:?}",
+                k_shape,
+                new_k_shape
+            );
         }
-        
-        if k_shape[0] != new_k_shape[0] || k_shape[1] != new_k_shape[1] || k_shape[3] != new_k_shape[3] {
+
+        if k_shape[0] != new_k_shape[0]
+            || k_shape[1] != new_k_shape[1]
+            || k_shape[3] != new_k_shape[3]
+        {
             anyhow::bail!(
                 "Shape mismatch: cached {:?} vs new {:?} (batch, heads, head_dim must match)",
                 k_shape,
                 new_k_shape
             );
         }
-        
+
         // Concatenate data along sequence dimension (dim 2)
         let new_seq_len = k_shape[2] + new_k_shape[2];
-        
+
         // Concatenate k data
         let mut k_data = cached_k.data().to_vec();
         k_data.extend_from_slice(k.data());
         let k_concat = Tensor::new(&k_data, &[k_shape[0], k_shape[1], new_seq_len, k_shape[3]]);
-        
+
         // Concatenate v data
         let mut v_data = cached_v.data().to_vec();
         v_data.extend_from_slice(v.data());
         let v_concat = Tensor::new(&v_data, &[v_shape[0], v_shape[1], new_seq_len, v_shape[3]]);
-        
+
         self.cache[layer_idx] = (k_concat.clone(), v_concat.clone());
         Ok((k_concat, v_concat))
     }
@@ -679,9 +694,9 @@ mod tests {
         // Create query and key tensors
         let q = Tensor::ones(&[1, 2, 3, 4]);
         let k = Tensor::ones(&[1, 2, 3, 4]);
-        
+
         let (q_norm, k_norm) = apply_qk_norm(&q, &k).unwrap();
-        
+
         assert_eq!(q_norm.shape(), q.shape());
         assert_eq!(k_norm.shape(), k.shape());
     }
@@ -690,17 +705,17 @@ mod tests {
     fn test_qk_norm_different_shapes() {
         // Test with different n_heads vs n_kv_heads (GQA)
         let q = Tensor::ones(&[1, 4, 3, 4]); // 4 query heads
-        let k = Tensor::ones(&[1, 2, 3, 4]);  // 2 key/value heads
-        
+        let k = Tensor::ones(&[1, 2, 3, 4]); // 2 key/value heads
+
         let (q_norm, k_norm) = apply_qk_norm(&q, &k).unwrap();
-        
+
         assert_eq!(q_norm.shape(), q.shape());
         assert_eq!(k_norm.shape(), k.shape());
     }
 
     #[test]
     fn test_causal_attention_creation() {
-        let attn = CausalSelfAttention::new(768, 6, 6);
+        let attn = CausalSelfAttention::new(768, 6, 6, None, None);
         assert_eq!(attn.n_head(), 6);
         assert_eq!(attn.n_kv_head(), 6);
         assert_eq!(attn.head_dim(), 128);
@@ -709,7 +724,7 @@ mod tests {
     #[test]
     fn test_causal_attention_gqa() {
         // Test GQA with n_kv_head < n_head
-        let attn = CausalSelfAttention::new(768, 6, 2);
+        let attn = CausalSelfAttention::new(768, 6, 2, None, None);
         assert_eq!(attn.n_head(), 6);
         assert_eq!(attn.n_kv_head(), 2);
     }

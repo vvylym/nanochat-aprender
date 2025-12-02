@@ -3,8 +3,8 @@
 //! This module provides utilities for detecting numerical issues such as
 //! NaN, Inf, overflow, and underflow in tensor operations.
 
+use anyhow::Result;
 use aprender::autograd::Tensor;
-use anyhow::{Context, Result};
 
 /// Check if a tensor contains any NaN values
 ///
@@ -116,4 +116,3 @@ mod tests {
         assert!(validate_range(&tensor, "test", 0.0, 10.0).is_ok());
     }
 }
-

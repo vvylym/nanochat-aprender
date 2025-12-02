@@ -1,8 +1,8 @@
 //! MLP with ReLU² activation
 
-use aprender::autograd::Tensor;
-use aprender::nn::{Linear, ReLU, Module};
 use anyhow::Result;
+use aprender::autograd::Tensor;
+use aprender::nn::{Linear, Module, ReLU};
 
 /// MLP layer with ReLU² activation
 ///
@@ -31,12 +31,8 @@ impl MLP {
         let c_fc = Linear::new(n_embd, 4 * n_embd);
         let c_proj = Linear::new(4 * n_embd, n_embd);
         let relu = ReLU::new();
-        
-        Self {
-            c_fc,
-            c_proj,
-            relu,
-        }
+
+        Self { c_fc, c_proj, relu }
     }
 
     /// Forward pass through the MLP
@@ -49,16 +45,16 @@ impl MLP {
     pub fn forward(&self, x: &Tensor) -> Result<Tensor> {
         // Expansion: n_embd -> 4 * n_embd
         let x = self.c_fc.forward(x);
-        
+
         // ReLU² activation: relu(x).square()
         let x = self.relu.forward(&x);
         let x_data = x.data();
         let x_squared: Vec<f32> = x_data.iter().map(|&val| val * val).collect();
         let x = Tensor::new(&x_squared, x.shape());
-        
+
         // Projection: 4 * n_embd -> n_embd
         let output = self.c_proj.forward(&x);
-        
+
         Ok(output)
     }
 }
@@ -90,7 +86,7 @@ mod tests {
     #[test]
     fn test_mlp_creation() {
         let mlp = MLP::new(768);
-        
+
         // Verify MLP has expansion and projection layers
         let params = mlp.parameters();
         assert!(params.len() > 0);
@@ -103,9 +99,9 @@ mod tests {
     fn test_mlp_forward() {
         let mlp = MLP::new(768);
         let x = Tensor::ones(&[1, 10, 768]);
-        
+
         let output = mlp.forward(&x).unwrap();
-        
+
         // Output should have same batch and seq_len, but n_embd dimension
         assert_eq!(output.shape()[0], 1);
         assert_eq!(output.shape()[1], 10);
@@ -117,9 +113,9 @@ mod tests {
         // Test that negative values become zero after ReLU²
         let mlp = MLP::new(4);
         let x = Tensor::new(&[-1.0, 0.0, 1.0, 2.0], &[1, 1, 4]);
-        
+
         let output = mlp.forward(&x).unwrap();
-        
+
         // Output should not contain NaN or Inf
         let output_data = output.data();
         assert!(!output_data.iter().any(|&x| x.is_nan() || x.is_infinite()));

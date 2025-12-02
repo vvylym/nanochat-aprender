@@ -1,8 +1,8 @@
 //! Integration tests for checkpoint save/load
 
-use nanochat_model::{GPT, GPTConfig, save_checkpoint, load_checkpoint, CheckpointMetadata};
-use tempfile::TempDir;
+use nanochat_model::{load_checkpoint, save_checkpoint, CheckpointMetadata, GPTConfig, GPT};
 use std::collections::HashMap;
+use tempfile::TempDir;
 
 #[test]
 fn test_checkpoint_save() {
@@ -14,7 +14,7 @@ fn test_checkpoint_save() {
 
     let result = save_checkpoint(&model, &checkpoint_path, None);
     assert!(result.is_ok());
-    
+
     // Verify files were created
     assert!(checkpoint_path.with_extension("json").exists());
     assert!(checkpoint_path.with_extension("safetensors").exists());
@@ -33,10 +33,10 @@ fn test_checkpoint_load() {
 
     // Load checkpoint
     let (loaded_model, metadata) = load_checkpoint(&checkpoint_path).unwrap();
-    
+
     // Verify config matches
     assert_eq!(loaded_model.config(), model.config());
-    
+
     // Verify metadata
     assert_eq!(metadata.step, 0);
 }
@@ -61,10 +61,10 @@ fn test_checkpoint_roundtrip() {
 
     // Load
     let (loaded_model, loaded_metadata) = load_checkpoint(&checkpoint_path).unwrap();
-    
+
     // Verify config matches
     assert_eq!(loaded_model.config(), model.config());
-    
+
     // Verify metadata matches
     assert_eq!(loaded_metadata.step, metadata.step);
     assert_eq!(loaded_metadata.loss, metadata.loss);
@@ -101,14 +101,17 @@ fn test_checkpoint_metadata() {
         learning_rate: Some(0.0001),
         extra: {
             let mut extra = HashMap::new();
-            extra.insert("epoch".to_string(), serde_json::Value::Number(serde_json::Number::from(5)));
+            extra.insert(
+                "epoch".to_string(),
+                serde_json::Value::Number(serde_json::Number::from(5)),
+            );
             extra
         },
     };
 
     save_checkpoint(&model, &checkpoint_path, Some(metadata.clone())).unwrap();
     let (_, loaded_metadata) = load_checkpoint(&checkpoint_path).unwrap();
-    
+
     assert_eq!(loaded_metadata.step, metadata.step);
     assert_eq!(loaded_metadata.loss, metadata.loss);
     assert_eq!(loaded_metadata.learning_rate, metadata.learning_rate);

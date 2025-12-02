@@ -41,13 +41,13 @@
 //! # Ok::<(), anyhow::Error>(())
 //! ```
 
+pub mod attention;
+pub mod checkpoint;
 pub mod config;
 pub mod gpt;
-pub mod attention;
 pub mod mlp;
-pub mod rope;
 pub mod norm;
-pub mod checkpoint;
+pub mod rope;
 pub mod stability;
 
 // Public API exports
@@ -56,7 +56,7 @@ pub mod stability;
 ///
 /// Functions for saving and loading model checkpoints, including weights,
 /// configuration, and training metadata.
-pub use checkpoint::{save_checkpoint, load_checkpoint, CheckpointMetadata};
+pub use checkpoint::{load_checkpoint, save_checkpoint, CheckpointMetadata};
 
 /// Model configuration
 ///
@@ -74,10 +74,50 @@ pub use gpt::GPT;
 ///
 /// Provides multi-head attention with Group-Query Attention (GQA), QK normalization,
 /// and KV cache for efficient autoregressive inference.
-pub use attention::{CausalSelfAttention, apply_qk_norm, KVCache};
+pub use attention::{apply_qk_norm, CausalSelfAttention, KVCache};
 
 // Re-export common types for convenience
-/// Result type alias for error handling
-pub use anyhow::Result;
 /// Error type alias for error handling
 pub use anyhow::Error;
+/// Result type alias for error handling
+pub use anyhow::Result;
+
+/// Validate that a tokenizer and model config are compatible
+///
+/// This function checks that the tokenizer's vocabulary size matches the model's
+/// `vocab_size` configuration. Mismatched vocabulary sizes will cause runtime
+/// errors when token IDs exceed the model's vocabulary size.
+///
+/// # Arguments
+/// * `tokenizer` - The tokenizer to validate (must implement `vocab_size()`)
+/// * `config` - The model configuration
+///
+/// # Errors
+/// Returns an error if vocab_size doesn't match
+///
+/// # Example
+///
+/// ```no_run
+/// use nanochat_model::{GPTConfig, validate_tokenizer_model_compatibility};
+/// use aprender::text::tokenize::BpeTokenizer;
+///
+/// let tokenizer = BpeTokenizer::train(&["hello world"], 500)?;
+/// let config = GPTConfig::with_tokenizer_vocab_size(
+///     tokenizer.vocab_size(),
+///     1024, 12, 6, 6, 768, None, None
+/// )?;
+///
+/// // Validate compatibility
+/// validate_tokenizer_model_compatibility(&tokenizer, &config)?;
+/// # Ok::<(), anyhow::Error>(())
+/// ```
+pub fn validate_tokenizer_model_compatibility(
+    tokenizer: &aprender::text::tokenize::BpeTokenizer,
+    config: &GPTConfig,
+) -> Result<()> {
+    let tokenizer_vocab = tokenizer.vocab_size();
+    config
+        .validate_vocab_size(tokenizer_vocab)
+        .map_err(|e| anyhow::anyhow!("Tokenizer-model incompatibility: {}", e))?;
+    Ok(())
+}

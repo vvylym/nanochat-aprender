@@ -1,58 +1,14 @@
 //! GPT model implementation
 
-use aprender::autograd::Tensor;
-use aprender::nn::Module;
-use crate::config::GPTConfig;
 use crate::attention::{CausalSelfAttention, KVCache};
+use crate::config::GPTConfig;
 use crate::mlp::MLP;
 use crate::norm::rms_norm;
+use aprender::autograd::Tensor;
+use aprender::nn::Module;
 // RoPE functions used in forward pass
 use anyhow::Result;
 use std::sync::OnceLock;
-
-/// Initialize embedding weights with normal distribution
-///
-/// Uses N(0, 0.02) which is standard for transformer embeddings.
-/// This provides better initialization than zeros.
-fn init_embedding_weights(vocab_size: usize, n_embd: usize) -> Tensor {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    
-    let size = vocab_size * n_embd;
-    let mut weights = Vec::with_capacity(size);
-    let mut hasher = DefaultHasher::new();
-    (vocab_size, n_embd).hash(&mut hasher);
-    let mut seed = hasher.finish();
-    
-    // Box-Muller transform for normal distribution
-    // N(0, 0.02) = 0.02 * N(0, 1)
-    let std_dev = 0.02;
-    let mut use_spare = false;
-    let mut spare = 0.0;
-    
-    for _ in 0..size {
-        if !use_spare {
-            // Generate two uniform random numbers
-            seed = seed.wrapping_mul(1103515245).wrapping_add(12345);
-            let u1 = ((seed >> 16) as f32 / 65536.0).max(1e-10).min(1.0 - 1e-10);
-            seed = seed.wrapping_mul(1103515245).wrapping_add(12345);
-            let u2 = ((seed >> 16) as f32 / 65536.0).max(1e-10).min(1.0 - 1e-10);
-            
-            // Box-Muller transform
-            let z0 = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f32::consts::PI * u2).cos();
-            let z1 = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f32::consts::PI * u2).sin();
-            
-            weights.push(z0 * std_dev);
-            spare = z1 * std_dev;
-            use_spare = true;
-        } else {
-            weights.push(spare);
-            use_spare = false;
-        }
-    }
-    
-    Tensor::new(&weights, &[vocab_size, n_embd])
-}
 
 /// Transformer decoder block
 ///
@@ -76,9 +32,15 @@ impl Block {
     /// * `config` - Model configuration
     /// * `layer_idx` - Layer index (for KV cache management)
     pub fn new(config: &GPTConfig, layer_idx: usize) -> Self {
-        let attn = CausalSelfAttention::new(config.n_embd, config.n_head, config.n_kv_head);
+        let attn = CausalSelfAttention::new(
+            config.n_embd,
+            config.n_head,
+            config.n_kv_head,
+            config.dropout,
+            config.seed,
+        );
         let mlp = MLP::new(config.n_embd);
-        
+
         Self {
             attn,
             mlp,
@@ -103,15 +65,15 @@ impl Block {
     ) -> Result<Tensor> {
         // Pre-norm attention: x = x + attn(norm(x))
         let x_norm = rms_norm(x)?;
-        
+
         // Forward through attention with RoPE and KV cache
         let attn_out = self.attn.forward(&x_norm, kv_cache, self.layer_idx, cos_sin)?;
-        
+
         // Residual connection using aprender's tensor operations
         // Note: Need to ensure shapes match - attention should output [batch, seq_len, n_embd]
         let x_shape = x.shape();
         let attn_shape = attn_out.shape();
-        
+
         // If shapes don't match, we have an issue
         if x_shape != attn_shape {
             anyhow::bail!(
@@ -120,17 +82,17 @@ impl Block {
                 x_shape
             );
         }
-        
+
         // Use aprender's tensor addition
         let x_after_attn = attn_out.add(x);
 
         // Pre-norm MLP: x = x + mlp(norm(x))
         let x_norm = rms_norm(&x_after_attn)?;
         let mlp_out = self.mlp.forward(&x_norm)?;
-        
+
         // Residual connection
         let output = mlp_out.add(&x_after_attn);
-        
+
         Ok(output)
     }
 }
@@ -141,7 +103,10 @@ impl Module for Block {
         // This is a simplified version without KV cache support
         // For full functionality, use Block::forward() directly
         let x_norm = rms_norm(input).expect("RMSNorm failed");
-        let attn_out = self.attn.forward(&x_norm, None, self.layer_idx, None).expect("Attention failed");
+        let attn_out = self
+            .attn
+            .forward(&x_norm, None, self.layer_idx, None)
+            .expect("Attention failed");
         let x_after_attn = attn_out.add(input);
         let x_norm = rms_norm(&x_after_attn).expect("RMSNorm failed");
         let mlp_out = self.mlp.forward(&x_norm).expect("MLP failed");
@@ -192,13 +157,34 @@ impl TokenEmbedding {
     /// # Arguments
     /// * `vocab_size` - Vocabulary size
     /// * `n_embd` - Embedding dimension
-    pub fn new(vocab_size: usize, n_embd: usize) -> Self {
-        // Initialize embedding weights with normal distribution
+    /// * `seed` - Optional random seed for reproducibility (None = non-deterministic)
+    pub fn new(vocab_size: usize, n_embd: usize, seed: Option<u64>) -> Self {
+        // Initialize embedding weights with normal distribution using proper RNG
         // Standard practice: N(0, 0.02) for transformer embeddings
-        // This provides better initialization than zeros
-        let weight = init_embedding_weights(vocab_size, n_embd).requires_grad();
+        // Uses rand::rngs::StdRng with SeedableRng (same as aprender uses internally)
+        use rand::rngs::StdRng;
+        use rand::{Rng, SeedableRng};
+
+        let numel = vocab_size * n_embd;
+        let mut rng = match seed {
+            Some(s) => StdRng::seed_from_u64(s),
+            None => StdRng::from_entropy(),
+        };
+        let std_dev = 0.02;
+
+        // Box-Muller transform for normal distribution (same as aprender::nn::init::normal)
+        let data: Vec<f32> = (0..numel)
+            .map(|_| {
+                let u1: f32 = rng.gen_range(0.0001_f32..1.0_f32);
+                let u2: f32 = rng.gen_range(0.0_f32..1.0_f32);
+                let z = (-2.0_f32 * u1.ln()).sqrt() * (2.0_f32 * std::f32::consts::PI * u2).cos();
+                0.0 + std_dev * z
+            })
+            .collect();
+
+        let weight = Tensor::new(&data, &[vocab_size, n_embd]).requires_grad();
         let norm = aprender::nn::RMSNorm::without_affine(&[n_embd]);
-        
+
         Self {
             weight,
             norm,
@@ -219,32 +205,36 @@ impl TokenEmbedding {
         if shape.len() != 2 {
             anyhow::bail!("Expected 2D tensor [batch, seq_len], got shape {:?}", shape);
         }
-        
+
         let batch = shape[0];
         let seq_len = shape[1];
-        
+
         // Lookup embeddings: for each token_id, get the corresponding row from weight matrix
         let token_data = token_ids.data();
         let weight_data = self.weight.data();
         let mut embedded_data = Vec::with_capacity(batch * seq_len * self.n_embd);
-        
+
         for &token_id in token_data {
             let token_id = token_id as usize;
             if token_id >= self.vocab_size {
-                anyhow::bail!("Token ID {} exceeds vocabulary size {}", token_id, self.vocab_size);
+                anyhow::bail!(
+                    "Token ID {} exceeds vocabulary size {}",
+                    token_id,
+                    self.vocab_size
+                );
             }
-            
+
             // Get embedding vector for this token
             let offset = token_id * self.n_embd;
             embedded_data.extend_from_slice(&weight_data[offset..offset + self.n_embd]);
         }
-        
+
         // Reshape to [batch, seq_len, n_embd]
         let embedded = Tensor::new(&embedded_data, &[batch, seq_len, self.n_embd]);
-        
+
         // Apply RMSNorm (using Module trait)
         let normalized = self.norm.forward(&embedded);
-        
+
         Ok(normalized)
     }
 
@@ -290,10 +280,8 @@ impl LanguageModelHead {
     /// * `vocab_size` - Vocabulary size
     pub fn new(n_embd: usize, vocab_size: usize) -> Self {
         let projection = aprender::nn::Linear::new(n_embd, vocab_size);
-        
-        Self {
-            projection,
-        }
+
+        Self { projection }
     }
 
     /// Forward pass: project embeddings to vocabulary logits
@@ -356,7 +344,7 @@ impl GPT {
         config.validate().expect("Invalid GPT configuration");
 
         // Create token embedding
-        let wte = TokenEmbedding::new(config.vocab_size, config.n_embd);
+        let wte = TokenEmbedding::new(config.vocab_size, config.n_embd, config.seed);
 
         // Create transformer blocks
         let mut blocks = Vec::with_capacity(config.n_layer);
@@ -416,16 +404,6 @@ impl GPT {
         Ok(())
     }
 
-    /// Forward pass through the GPT model
-    ///
-    /// # Arguments
-    /// * `idx` - Token IDs tensor [batch, seq_len] with values in [0, vocab_size)
-    /// * `targets` - Optional target token IDs for training [batch, seq_len]
-    /// * `kv_cache` - Optional KV cache for inference
-    ///
-    /// # Returns
-    /// - If `targets` is provided: Loss value (for training)
-    /// - If `targets` is None: Logits tensor [batch, seq_len, vocab_size] (for inference)
     /// Forward pass for training (with targets, no KV cache)
     ///
     /// # Arguments
@@ -434,14 +412,10 @@ impl GPT {
     ///
     /// # Returns
     /// Loss value (scalar tensor)
-    pub fn forward_training(
-        &mut self,
-        idx: &Tensor,
-        targets: &Tensor,
-    ) -> Result<Tensor> {
+    pub fn forward_training(&mut self, idx: &Tensor, targets: &Tensor) -> Result<Tensor> {
         self.forward_internal(idx, Some(targets), None)
     }
-    
+
     /// Forward pass for inference with KV cache support
     ///
     /// # Arguments
@@ -457,7 +431,7 @@ impl GPT {
     ) -> Result<Tensor> {
         self.forward_internal(idx, None, kv_cache)
     }
-    
+
     /// Internal forward pass implementation
     fn forward_internal(
         &mut self,
@@ -478,17 +452,17 @@ impl GPT {
 
         // Get RoPE embeddings for current sequence length
         let cos = self.cos.get().expect("RoPE cos not initialized");
-        let sin = self.sin.get().expect("RoPE sin not initialized"); 
-        
+        let sin = self.sin.get().expect("RoPE sin not initialized");
+
         // RoPE slicing is now handled in CausalSelfAttention::forward()
-        
+
         // Forward through token embedding with RMSNorm
         let x = self.wte.forward(idx)?;
         // x already has RMSNorm applied in wte.forward()
-        
+
         // Forward through transformer blocks
         let mut x = x;
-        
+
         // Handle KV cache by using indices instead of iterating directly
         // This allows us to pass mutable references properly
         if let Some(cache) = kv_cache {
@@ -507,34 +481,34 @@ impl GPT {
                 x = block.forward(&x, cos_sin, None)?;
             }
         }
-        
+
         // Final RMSNorm
         let x = rms_norm(&x)?;
-        
+
         // Forward through language model head to get logits
         let logits = self.lm_head.forward(&x)?;
-        
+
         // If targets provided, compute loss for training
         if let Some(targets) = targets {
             use aprender::nn::loss::CrossEntropyLoss;
-            
+
             // Reshape logits from [batch, seq_len, vocab_size] to [batch * seq_len, vocab_size]
             let batch = logits.shape()[0];
             let seq_len = logits.shape()[1];
             let vocab_size = logits.shape()[2];
             let logits_flat = logits.view(&[batch * seq_len, vocab_size]);
-            
+
             // Reshape targets from [batch, seq_len] to [batch * seq_len]
             // Targets should be integer class indices (as f32)
             let targets_flat = targets.view(&[batch * seq_len]);
-            
+
             // Compute cross-entropy loss
             let criterion = CrossEntropyLoss::new();
             let loss = criterion.forward(&logits_flat, &targets_flat);
-            
+
             return Ok(loss);
         }
-        
+
         Ok(logits)
     }
 }
@@ -558,55 +532,55 @@ impl Module for GPT {
         // Get RoPE embeddings for current sequence length
         let cos_ref = self.cos.get().expect("RoPE cos not initialized");
         let sin_ref = self.sin.get().expect("RoPE sin not initialized");
-        
+
         // Forward through token embedding with RMSNorm
         let x = self.wte.forward(input).expect("Token embedding failed");
-        
+
         // Forward through transformer blocks (no KV cache for Module::forward)
         let mut x = x;
         for block in self.blocks.iter() {
             let cos_sin = Some((cos_ref, sin_ref));
             x = block.forward(&x, cos_sin, None).expect("Block forward failed");
         }
-        
+
         // Final RMSNorm
         let x = rms_norm(&x).expect("RMSNorm failed");
-        
+
         // Forward through language model head to get logits
         self.lm_head.forward(&x).expect("LM head forward failed")
     }
 
     fn parameters(&self) -> Vec<&Tensor> {
         let mut params = Vec::new();
-        
+
         // Add embedding weights
         params.extend(self.wte.parameters());
-        
+
         // Add block parameters
         for block in &self.blocks {
             params.extend(block.parameters());
         }
-        
+
         // Add LM head parameters
         params.extend(self.lm_head.parameters());
-        
+
         params
     }
 
     fn parameters_mut(&mut self) -> Vec<&mut Tensor> {
         let mut params = Vec::new();
-        
+
         // Add embedding weights
         params.extend(self.wte.parameters_mut());
-        
+
         // Add block parameters
         for block in &mut self.blocks {
             params.extend(block.parameters_mut());
         }
-        
+
         // Add LM head parameters
         params.extend(self.lm_head.parameters_mut());
-        
+
         params
     }
 }
@@ -619,7 +593,7 @@ mod tests {
     fn test_block_creation() {
         let config = GPTConfig::default();
         let block = Block::new(&config, 0);
-        
+
         // Verify block has attention and MLP
         assert_eq!(block.attn.n_head(), config.n_head);
         assert_eq!(block.attn.n_kv_head(), config.n_kv_head);
@@ -632,9 +606,9 @@ mod tests {
         let config = GPTConfig::default();
         let block = Block::new(&config, 0);
         let x = Tensor::ones(&[1, 10, 768]);
-        
+
         let output = block.forward(&x, None, None).unwrap();
-        
+
         assert_eq!(output.shape(), x.shape());
     }
 }

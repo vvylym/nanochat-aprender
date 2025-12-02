@@ -1,2 +1,1 @@
 //! ARC benchmarks implementation
-

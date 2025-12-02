@@ -1,2 +1,1 @@
 //! ChatCORE benchmark implementation
-
