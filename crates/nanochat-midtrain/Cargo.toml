@@ -27,7 +27,7 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 pretty_assertions = { workspace = true }
 
 [features]
-default = ["gpu"]
+default = ["cpu-only"]
 gpu = ["aprender/gpu"]
 cpu-only = []
 

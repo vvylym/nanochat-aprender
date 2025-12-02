@@ -21,9 +21,14 @@ thiserror = { workspace = true }
 criterion = { workspace = true }
 proptest = { workspace = true }
 pretty_assertions = { workspace = true }
+tempfile = "3.8"
 
 [features]
-default = ["gpu"]
+default = ["cpu-only"]
 gpu = ["aprender/gpu", "trueno/gpu"]
 cpu-only = []
 
+[[bench]]
+name = "forward"
+path = "benches/forward.rs"
+harness = false

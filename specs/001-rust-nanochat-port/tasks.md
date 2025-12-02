@@ -106,12 +106,12 @@
 - [X] T045 Implement token embedding layer in `crates/nanochat-model/src/gpt.rs` with RMSNorm after embedding (untied from LM head)
 - [X] T046 Implement language model head in `crates/nanochat-model/src/gpt.rs` (untied from embedding, separate parameters)
 - [X] T047 Implement `GPTModel` struct in `crates/nanochat-model/src/gpt.rs` with configurable depth (n_layer transformer blocks)
-- [ ] T048 Implement forward pass in `crates/nanochat-model/src/gpt.rs` with KV cache support for inference
-- [ ] T049 Implement checkpoint save functionality in `crates/nanochat-model/src/checkpoint.rs` using aprender's `.apr` format (weights, config, metadata)
-- [ ] T050 Implement checkpoint load functionality in `crates/nanochat-model/src/checkpoint.rs` with integrity validation (checksum, version)
-- [ ] T051 Add comprehensive documentation for all public APIs in `crates/nanochat-model/src/lib.rs`
-- [ ] T052 Add numerical stability checks for all mathematical operations (overflow, underflow, NaN detection)
-- [ ] T053 Implement benchmark for forward pass performance in `crates/nanochat-model/benches/forward.rs`
+- [X] T048 Implement forward pass in `crates/nanochat-model/src/gpt.rs` with KV cache support for inference
+- [X] T049 Implement checkpoint save functionality in `crates/nanochat-model/src/checkpoint.rs` using aprender's `.apr` format (weights, config, metadata)
+- [X] T050 Implement checkpoint load functionality in `crates/nanochat-model/src/checkpoint.rs` with integrity validation (checksum, version)
+- [X] T051 Add comprehensive documentation for all public APIs in `crates/nanochat-model/src/lib.rs`
+- [X] T052 Add numerical stability checks for all mathematical operations (overflow, underflow, NaN detection)
+- [X] T053 Implement benchmark for forward pass performance in `crates/nanochat-model/benches/forward.rs`
 
 **Checkpoint**: Model crate complete, all tests passing, can perform forward pass and save/load checkpoints
 

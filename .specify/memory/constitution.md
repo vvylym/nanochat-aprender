@@ -1,21 +1,25 @@
 <!--
 Sync Impact Report:
-Version: 0.0.0 → 1.0.0 (Initial constitution)
+Version: 1.0.0 → 1.1.0 (Added Aprender API Reuse principle)
 Principles Added:
-  - I. Pure Rust (Zero C/C++ Dependencies)
-  - II. Performance & Safety First
-  - III. Minimalism & Simplicity
-  - IV. Classical ML Algorithms
-  - V. Code Quality & Readability
-  - VI. LLM Disclosure Policy
+  - VII. Aprender API Reuse (Mandatory Library-First Approach)
+Principles Modified:
+  - None
 Sections Added:
-  - Technology Stack Requirements
-  - Development Workflow
+  - None
+Sections Modified:
+  - Technology Stack Requirements (added aprender as primary ML framework)
+  - Development Workflow (added aprender API verification step)
 Templates Updated:
-  - ✅ .specify/templates/plan-template.md (Constitution Check section updated with all 6 principles)
+  - ✅ .specify/templates/plan-template.md (Constitution Check section updated with Principle VII)
   - ⚠ .specify/templates/spec-template.md (No changes needed - technology agnostic)
   - ⚠ .specify/templates/tasks-template.md (No changes needed - technology agnostic)
   - ⚠ .specify/templates/checklist-template.md (No changes needed - dynamically generated)
+Critical Issues Addressed:
+  - CRITICAL: Prohibits custom RNG implementations (must use aprender's seeded StdRng)
+  - CRITICAL: Prohibits custom weight initialization (must use aprender::nn::init functions)
+  - CRITICAL: Prohibits custom dropout (must use aprender::nn::Dropout or proper StdRng)
+  - Architecture-specific code must follow aprender patterns and examples
 -->
 
 # Nanochat-Rust Constitution
@@ -89,20 +93,63 @@ Templates Updated:
 
 **Rationale**: Transparency in development process ensures maintainability and allows reviewers to provide appropriate scrutiny. This policy aligns with nanochat's disclosure requirements and maintains code quality regardless of generation method.
 
+### VII. Aprender API Reuse (Mandatory Library-First Approach)
+
+**MUST**: All implementations MUST prioritize aprender's built-in APIs before implementing custom solutions:
+- **CRITICAL**: Before implementing any ML functionality, MUST verify if aprender provides equivalent functionality
+- **CRITICAL**: Weight initialization MUST use `aprender::nn::init::{normal, uniform, xavier_*, kaiming_*}` with proper seeding (`seed: Option<u64>`)
+- **CRITICAL**: Dropout MUST use `aprender::nn::Dropout` or proper `rand::rngs::StdRng` with `SeedableRng::seed_from_u64()` - hash-based "RNG" implementations are FORBIDDEN
+- **CRITICAL**: Random number generation MUST use `rand::rngs::StdRng` with proper seeding - custom hash-based or LCG implementations are FORBIDDEN
+- Normalization layers MUST use aprender's implementations (`aprender::nn::{RMSNorm, LayerNorm, BatchNorm1d, ...}`)
+- Optimizers MUST use `aprender::nn::optim::{Adam, AdamW, SGD, ...}`
+- Learning rate schedulers MUST use `aprender::nn::scheduler::{WarmupCosineScheduler, LinearWarmup, ...}`
+- Loss functions MUST use `aprender::nn::loss::{CrossEntropyLoss, MSELoss, ...}`
+- Model serialization MUST use `aprender::nn::serialize::{save_model, load_model}`
+
+**MUST NOT**: The following are FORBIDDEN:
+- Custom weight initialization functions that duplicate aprender's `init` module functionality
+- Custom dropout implementations using hash-based RNG, `DefaultHasher`, or LCG
+- Custom random number generators for ML purposes (use `StdRng` from `rand` crate)
+- Reinventing functionality that aprender already provides with proper seeding and thread safety
+
+**Architecture-Specific Code**: When architecture-specific functionality is required (e.g., KV cache, custom RoPE slicing, QK normalization):
+- MUST follow aprender's patterns and coding style
+- MUST reference aprender examples for similar functionality
+- MUST use aprender's underlying primitives (e.g., `Tensor`, `Module` trait) correctly
+- MUST document why aprender's standard components cannot be used directly
+- MUST optimize implementation following aprender's performance patterns
+- SHOULD leverage aprender's helper functions and utilities where applicable
+
+**Verification Process**:
+- All PRs MUST include verification that aprender APIs were checked before implementation
+- Code reviews MUST flag any custom implementations that duplicate aprender functionality
+- Before implementing any ML component, developers MUST:
+  1. Search aprender's `src/nn/` module for equivalent functionality
+  2. Check aprender examples for usage patterns
+  3. Document why aprender's implementation cannot be used (if applicable)
+  4. Ensure custom code follows aprender's patterns and uses aprender primitives
+
+**Rationale**: Aprender provides battle-tested, thread-safe, properly seeded implementations of common ML operations. Reinventing this functionality introduces bugs (non-reproducible results, poor statistical properties, thread-safety issues), increases maintenance burden, and misaligns with the project's goal of leveraging Rust-native ML frameworks. Architecture-specific code is acceptable when necessary, but must follow aprender's established patterns to maintain consistency and quality.
+
 ## Technology Stack Requirements
 
 **MUST**: The project MUST use:
 - Rust as the sole implementation language
 - Pure Rust dependencies only (no C/C++ FFI)
-- Rust-native ML frameworks (e.g., Burn, or custom implementations)
+- **Aprender as the primary ML framework** for all neural network operations, optimizers, schedulers, loss functions, and model serialization
+- Rust-native ML frameworks (aprender is the primary; other pure Rust frameworks may be used only if aprender lacks required functionality)
 - Standard Rust tooling: Cargo, rustfmt, clippy, rustc
 - Semantic versioning for releases
+- `rand` crate's `StdRng` with `SeedableRng` for all random number generation in ML contexts
 
 **MUST NOT**: The project MUST NOT use:
 - C/C++ dependencies or FFI bindings
 - Python runtime dependencies (Python tooling for data processing is acceptable)
 - Proprietary or vendor-locked frameworks that require C/C++ backends
 - Build systems that compile C/C++ code
+- Custom hash-based RNG implementations (`DefaultHasher`, LCG) for ML purposes
+- Custom weight initialization that duplicates aprender's `init` module
+- Custom dropout implementations that duplicate aprender's `dropout` module
 
 ## Development Workflow
 
@@ -114,6 +161,8 @@ Templates Updated:
 - PRs MUST pass all tests and linting before merge
 - Code reviews MUST verify constitution compliance
 - Breaking changes MUST be documented and versioned appropriately
+- **Aprender API verification**: Before implementing any ML functionality, developers MUST verify aprender's API availability and use it when available
+- **No wheel reinvention**: PRs MUST be rejected if they implement functionality that aprender already provides (see Principle VII)
 
 **SHOULD**: Development SHOULD:
 - Use feature flags for experimental functionality
@@ -136,4 +185,4 @@ This constitution supersedes all other development practices and guidelines. All
 - Constitution violations are blocking issues and MUST be resolved before merge
 - Regular audits SHOULD be conducted to ensure ongoing compliance
 
-**Version**: 1.0.0 | **Ratified**: 2025-01-27 | **Last Amended**: 2025-01-27
+**Version**: 1.1.0 | **Ratified**: 2025-01-27 | **Last Amended**: 2025-01-27

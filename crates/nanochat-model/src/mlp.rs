@@ -67,6 +67,20 @@ impl Module for MLP {
     fn forward(&self, input: &Tensor) -> Tensor {
         self.forward(input).expect("MLP forward pass failed")
     }
+
+    fn parameters(&self) -> Vec<&Tensor> {
+        let mut params = Vec::new();
+        params.extend(self.c_fc.parameters());
+        params.extend(self.c_proj.parameters());
+        params
+    }
+
+    fn parameters_mut(&mut self) -> Vec<&mut Tensor> {
+        let mut params = Vec::new();
+        params.extend(self.c_fc.parameters_mut());
+        params.extend(self.c_proj.parameters_mut());
+        params
+    }
 }
 
 #[cfg(test)]
@@ -76,8 +90,13 @@ mod tests {
     #[test]
     fn test_mlp_creation() {
         let mlp = MLP::new(768);
-        // Just verify it was created successfully
-        assert!(true);
+        
+        // Verify MLP has expansion and projection layers
+        let params = mlp.parameters();
+        assert!(params.len() > 0);
+        // Each Linear layer has at least weight, may have bias
+        // So we expect at least 2 parameters (one per layer)
+        assert!(params.len() >= 2);
     }
 
     #[test]

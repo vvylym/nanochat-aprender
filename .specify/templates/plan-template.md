@@ -61,6 +61,15 @@
 **VI. LLM Disclosure Policy**
 - [ ] Any LLM-assisted code sections declared in PR
 
+**VII. Aprender API Reuse (Mandatory Library-First Approach)**
+- [ ] Aprender APIs checked before implementing any ML functionality
+- [ ] Weight initialization uses `aprender::nn::init` functions with proper seeding
+- [ ] Dropout uses `aprender::nn::Dropout` or proper `StdRng` (no hash-based RNG)
+- [ ] Random number generation uses `rand::rngs::StdRng` with `SeedableRng` (no custom RNG)
+- [ ] Normalization, optimizers, schedulers, loss functions use aprender implementations
+- [ ] Architecture-specific code follows aprender patterns and examples
+- [ ] Custom implementations documented with rationale for why aprender cannot be used
+
 ## Project Structure
 
 ### Documentation (this feature)

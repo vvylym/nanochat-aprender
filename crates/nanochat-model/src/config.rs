@@ -20,7 +20,7 @@ pub enum ConfigError {
 }
 
 /// GPT model configuration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GPTConfig {
     /// Maximum sequence length
     pub sequence_len: usize,

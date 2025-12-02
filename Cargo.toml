@@ -9,8 +9,32 @@ members = [
     "crates/nanochat-inference",
     "crates/nanochat-cli",
 ]
-exclude = [".idea"]
 resolver = "2"
+
+[workspace.dependencies]
+# Machine Learning
+aprender = { version = "0.14", default-features = false, features = ["parallel"] }
+trueno = { version = "0.7", default-features = false }
+nalgebra = { version = "0.34", default-features = false, features = ["std"] }
+
+# Web framework
+actix-web = "4.8"
+tokio = { version = "1.48", features = ["rt-multi-thread", "macros", "signal"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+indicatif = "0.18"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+
+# Testing
+criterion = "0.5"
+proptest = "1.6"
+pretty_assertions = "1.0"
 
 [workspace.package]
 version = "0.1.0"
@@ -43,31 +67,6 @@ cast_precision_loss = "allow"
 cast_possible_truncation = "allow"
 cast_sign_loss = "allow"
 float_cmp = "allow"
-
-[workspace.dependencies]
-# Machine Learning - use local forks
-aprender = { path = ".idea/aprender", default-features = false, features = ["parallel"] }
-trueno = { path = ".idea/trueno", default-features = false }
-nalgebra = { path = ".idea/nalgebra", default-features = false, features = ["std"] }
-
-# Web framework
-actix-web = "4.8"
-tokio = { version = "1.40", features = ["rt-multi-thread", "macros", "signal"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-
-# CLI
-clap = { version = "4.0", features = ["derive"] }
-indicatif = "0.17"
-
-# Error handling
-anyhow = "1.0"
-thiserror = "2.0"
-
-# Testing
-criterion = "0.5"
-proptest = "1.6"
-pretty_assertions = "1.0"
 
 [profile.release]
 opt-level = 3
