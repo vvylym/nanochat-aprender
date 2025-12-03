@@ -240,6 +240,18 @@ With multiple developers:
 
 ---
 
+## Quality Gates (Constitution Requirements)
+
+**MANDATORY**: Before marking any task as complete, the following MUST pass:
+
+1. **Formatting**: Run `cargo fmt --all` - All code MUST be formatted
+2. **Linting**: Run `cargo clippy --workspace --all-features --all-targets` - All code MUST pass clippy with no warnings
+3. **Testing**: Run `cargo test --workspace --all-features` - All tests MUST pass
+
+**Error Handling in Tests**: 
+- **FORBIDDEN**: Use of `.unwrap()` in test code is PROHIBITED
+- **REQUIRED**: Use `.expect("descriptive error message")` instead of `.unwrap()` for better debugging
+
 ## Notes
 
 - [P] tasks = different files, no dependencies
@@ -249,3 +261,4 @@ With multiple developers:
 - Commit after each task or logical group
 - Stop at any checkpoint to validate story independently
 - Avoid: vague tasks, same file conflicts, cross-story dependencies that break independence
+- **Quality gates must pass before marking tasks complete** (formatting, linting, testing)

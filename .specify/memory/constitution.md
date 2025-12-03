@@ -1,25 +1,24 @@
 <!--
 Sync Impact Report:
-Version: 1.0.0 → 1.1.0 (Added Aprender API Reuse principle)
+Version: 1.1.0 → 1.2.0 (Added mandatory quality gates and test error handling requirements)
 Principles Added:
-  - VII. Aprender API Reuse (Mandatory Library-First Approach)
+  - None
 Principles Modified:
   - None
 Sections Added:
   - None
 Sections Modified:
-  - Technology Stack Requirements (added aprender as primary ML framework)
-  - Development Workflow (added aprender API verification step)
+  - Development Workflow (added mandatory quality gates: formatting, linting, testing commands)
+  - Development Workflow (added error handling requirements for tests: prohibit unwrap(), require expect())
 Templates Updated:
-  - ✅ .specify/templates/plan-template.md (Constitution Check section updated with Principle VII)
+  - ✅ .specify/templates/plan-template.md (No changes needed - quality gates are workflow-level)
   - ⚠ .specify/templates/spec-template.md (No changes needed - technology agnostic)
-  - ⚠ .specify/templates/tasks-template.md (No changes needed - technology agnostic)
+  - ✅ .specify/templates/tasks-template.md (Updated with quality gate verification section)
   - ⚠ .specify/templates/checklist-template.md (No changes needed - dynamically generated)
 Critical Issues Addressed:
-  - CRITICAL: Prohibits custom RNG implementations (must use aprender's seeded StdRng)
-  - CRITICAL: Prohibits custom weight initialization (must use aprender::nn::init functions)
-  - CRITICAL: Prohibits custom dropout (must use aprender::nn::Dropout or proper StdRng)
-  - Architecture-specific code must follow aprender patterns and examples
+  - MANDATORY: All tasks must pass formatting, linting, and testing before completion
+  - MANDATORY: Tests must use .expect() instead of .unwrap() for better error messages
+  - Based on remediation plan requirements for consistent quality standards
 -->
 
 # Nanochat-Rust Constitution
@@ -164,6 +163,16 @@ Critical Issues Addressed:
 - **Aprender API verification**: Before implementing any ML functionality, developers MUST verify aprender's API availability and use it when available
 - **No wheel reinvention**: PRs MUST be rejected if they implement functionality that aprender already provides (see Principle VII)
 
+**MANDATORY Quality Gates**: Before marking any task as complete, the following commands MUST pass:
+- **Formatting**: `cargo fmt --all` - All code MUST be formatted using rustfmt
+- **Linting**: `cargo clippy --workspace --all-features --all-targets` - All code MUST pass clippy checks with no warnings
+- **Testing**: `cargo test --workspace --all-features` - All tests MUST pass, including unit tests, integration tests, and doc tests
+
+**Error Handling in Tests**: 
+- **FORBIDDEN**: Use of `.unwrap()` in test code is PROHIBITED
+- **REQUIRED**: Use `.expect("descriptive error message")` instead of `.unwrap()` to enable easy debugging
+- **Rationale**: `.expect()` provides context when tests fail, making it easier to identify the root cause of failures. This applies to ALL test code, including unit tests, integration tests, and doc tests.
+
 **SHOULD**: Development SHOULD:
 - Use feature flags for experimental functionality
 - Maintain backward compatibility when possible
@@ -185,4 +194,4 @@ This constitution supersedes all other development practices and guidelines. All
 - Constitution violations are blocking issues and MUST be resolved before merge
 - Regular audits SHOULD be conducted to ensure ongoing compliance
 
-**Version**: 1.1.0 | **Ratified**: 2025-01-27 | **Last Amended**: 2025-01-27
+**Version**: 1.2.0 | **Ratified**: 2025-01-27 | **Last Amended**: 2025-01-27
