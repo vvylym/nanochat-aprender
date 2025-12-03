@@ -38,7 +38,7 @@ mod tests {
     fn test_rms_norm_basic() {
         // Create a simple 2D tensor: [batch_size=2, hidden_dim=4]
         let x = Tensor::ones(&[2, 4]);
-        let result = rms_norm(&x).unwrap();
+        let result = rms_norm(&x).expect("RMSNorm failed");
 
         // Result should have same shape
         assert_eq!(result.shape(), x.shape());

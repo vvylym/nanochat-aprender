@@ -1,6 +1,6 @@
 # Implementation Plan: Production-Grade Rust Port of Nanochat
 
-**Branch**: `001-rust-nanochat-port` | **Date**: 2025-01-27 | **Spec**: [spec.md](./spec.md)
+**Branch**: `001-rust-nanochat-port` | **Date**: 2025-12-01 | **Last Updated**: 2025-12-03 | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/001-rust-nanochat-port/spec.md`
 
 **Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
@@ -18,7 +18,7 @@ This plan implements a production-grade, 100% tested Rust port of nanochat (Karp
 - CLI: clap, indicatif
 - All dependencies are pure Rust with zero C/C++ FFI
 
-**Storage**: File-based checkpoint storage (`.apr` format via aprender), in-memory caching for inference  
+**Storage**: File-based checkpoint storage (SafeTensors format via aprender for model weights, JSON for metadata), tokenizer storage (JSON format `tokenizer.json`), in-memory caching for inference  
 **Testing**: cargo test with 100% coverage requirement, criterion for benchmarks, proptest for property-based testing  
 **Target Platform**: Linux/macOS/Windows (native), WebAssembly (future via aprender WASM support)  
 **Project Type**: Multi-crate workspace (8 crates: model, tokenizer, pretrain, midtrain, sft, eval, inference, cli)  
@@ -82,14 +82,14 @@ This plan implements a production-grade, 100% tested Rust port of nanochat (Karp
 
 ```text
 specs/001-rust-nanochat-port/
-├── plan.md              # This file (/speckit.plan command output)
-├── research.md          # Phase 0 output (/speckit.plan command)
-├── data-model.md        # Phase 1 output (/speckit.plan command)
-├── quickstart.md        # Phase 1 output (/speckit.plan command)
-├── contracts/           # Phase 1 output (/speckit.plan command)
+├── plan.md                   # This file (/speckit.plan command output)
+├── research.md               # Phase 0 output (/speckit.plan command)
+├── data-model.md             # Phase 1 output (/speckit.plan command)
+├── quickstart.md             # Phase 1 output (/speckit.plan command)
+├── contracts/                # Phase 1 output (/speckit.plan command)
 │   ├── inference-api.yaml    # REST API contract for inference server
-│   └── training-api.yaml     # CLI contract for training commands
-└── tasks.md             # Phase 2 output (/speckit.tasks command - NOT created by /speckit.plan)
+│   └── training-api.md       # CLI contract for training commands
+└── tasks.md                  # Phase 2 output (/speckit.tasks command - NOT created by /speckit.plan)
 ```
 
 ### Source Code (repository root)
@@ -109,7 +109,9 @@ workspace-root/
 │   │   │   ├── mlp.rs            # MLP with ReLU²
 │   │   │   ├── rope.rs           # Rotary position embeddings
 │   │   │   ├── norm.rs           # RMSNorm implementation
-│   │   │   └── checkpoint.rs     # Checkpoint save/load
+│   │   │   ├── checkpoint.rs     # Checkpoint save/load (SafeTensors format)
+│   │   │   ├── init.rs           # Weight initialization helpers
+│   │   │   └── stability.rs      # Numerical stability checks
 │   │   └── tests/
 │   │       ├── unit/
 │   │       └── integration/
@@ -117,10 +119,7 @@ workspace-root/
 │   ├── nanochat-tokenizer/       # BPE tokenizer
 │   │   ├── Cargo.toml
 │   │   ├── src/
-│   │   │   ├── lib.rs
-│   │   │   ├── bpe.rs            # BPE training and encoding
-│   │   │   ├── vocab.rs          # Vocabulary management
-│   │   │   └── special_tokens.rs # Special token handling
+│   │   │   └── lib.rs            # Tokenizer API wrapping aprender's BpeTokenizer
 │   │   └── tests/
 │   │
 │   ├── nanochat-pretrain/       # Pretraining stage
@@ -190,7 +189,14 @@ workspace-root/
     └── benchmarks/
 ```
 
-**Structure Decision**: Multi-crate workspace following LLMOps best practices. Each ML cycle step (pretraining, mid-training, SFT, evaluation) is a separate crate, enabling independent development, testing, and deployment. The model crate provides the core architecture, tokenizer handles text preprocessing, inference server handles deployment, and CLI provides user interface. This structure aligns with the constitution's minimalism principle while maintaining clear separation of concerns.
+**Structure Decision**: Multi-crate workspace following LLMOps best practices. Each ML cycle step (pretraining, mid-training, SFT, evaluation) is a separate crate, enabling independent development, testing, and deployment. The model crate provides the core architecture, tokenizer wraps aprender's BPE implementation (no custom BPE code - uses aprender API per Principle VII), inference server handles deployment, and CLI provides user interface. This structure aligns with the constitution's minimalism principle while maintaining clear separation of concerns.
+
+**Implementation Status**:
+- **Phase 2 (Tokenizer)**: Complete - Uses aprender's `BpeTokenizer` directly, serializes to JSON format
+- **Phase 3 (Model)**: Complete - Core GPT architecture with SafeTensors checkpoint format
+- **Phase 4-6 (Training)**: Crate structure exists, placeholder implementations ready for development
+- **Phase 7 (Evaluation)**: Crate structure exists, placeholder implementations ready for development
+- **Phase 8-9 (Inference)**: Crate structure exists, placeholder implementations ready for development
 
 ## Complexity Tracking
 
@@ -212,10 +218,13 @@ This implementation follows LLMOps best practices, organizing development into p
 
 ### Phase 1: Data Preparation & Preprocessing
 **LLMOps Step**: Data Pipeline Development
-- Implement BPE tokenizer training
+- Integrate BPE tokenizer using aprender's `BpeTokenizer` (no custom implementation needed - uses aprender API per Principle VII)
+- Implement tokenizer save/load using JSON format (`tokenizer.json`) - serializes vocabulary and merges
 - Implement data loading and preprocessing
 - Implement data sharding for distributed training
 - Establish data validation and quality checks
+
+**Architecture Note**: The tokenizer crate wraps aprender's `BpeTokenizer` directly, providing a clean API while leveraging aprender's battle-tested BPE implementation. Special tokens, vocabulary, and encoding/decoding are all handled by aprender's API.
 
 ### Phase 2: Model Architecture Development
 **LLMOps Step**: Model Implementation
@@ -223,7 +232,20 @@ This implementation follows LLMOps best practices, organizing development into p
 - Implement attention mechanisms (GQA, RoPE, QK-norm)
 - Implement MLP layers (ReLU² activation)
 - Implement normalization (RMSNorm)
-- Implement checkpoint save/load
+- Implement checkpoint save/load using SafeTensors format (aprender's standard)
+
+#### Device Management
+
+**Architecture Decision**: The `get_device()` method from Python reference is not implemented. Instead:
+
+- **Aprender Feature Flags**: Device selection is compile-time via `gpu` feature flag
+- **Model Crate**: Works with aprender's tensor operations (CPU or GPU via feature flags)
+- **No Runtime Device Selection**: Unlike PyTorch, aprender uses feature flags for device selection
+
+**Python Reference Alignment**: Python's `GPT.get_device()` returns the device (CPU/GPU) of model parameters. In Rust:
+- Device is determined at compile time via `gpu` feature flag
+- All tensors use the same backend (CPU via trueno, or GPU via wgpu)
+- No runtime device switching needed (simpler, more Rust-idiomatic)
 
 ### Phase 3: Training Pipeline Development
 **LLMOps Step**: Training Infrastructure
@@ -233,6 +255,22 @@ This implementation follows LLMOps best practices, organizing development into p
 - Implement optimizers (AdamW with learning rate scheduling)
 - Implement distributed training support
 - Implement checkpoint management and resumption
+
+#### Optimizer Setup
+
+**Architecture Decision**: The `setup_optimizers()` method from Python reference is not implemented in the model crate. Instead:
+
+- **Model Crate** (`nanochat-model`): Provides core architecture only
+- **Training Crates** (`nanochat-pretrain`, `nanochat-midtrain`, `nanochat-sft`): Implement optimizer setup using aprender's optimizers
+
+This separation follows the plan's architecture where:
+- Model crate = Core architecture (no training logic)
+- Training crates = Training loops, optimizers, schedulers
+
+**Python Reference Alignment**: Python's `GPT.setup_optimizers()` configures separate optimizers for different parameter groups. In Rust:
+- Model provides `parameters()` and `parameters_mut()` methods
+- Training crates use aprender's `AdamW` and schedulers to configure optimizers
+- Parameter grouping (embedding, LM head, matrix params) is handled in training crates
 
 ### Phase 4: Evaluation & Validation
 **LLMOps Step**: Model Evaluation & Benchmarking
@@ -255,6 +293,23 @@ This implementation follows LLMOps best practices, organizing development into p
 - Implement CLI interface with indicatif progress bars
 - Implement streaming text generation
 - Ensure full OpenAI API compatibility for seamless integration
+
+#### Model Generation Methods
+
+**Architecture Decision**: The `generate()` method from Python reference is not implemented in the model crate. Instead:
+
+- **Model Crate** (`nanochat-model`): Provides core forward pass with KV cache support via `forward_cache()` method
+- **CLI Crate** (`nanochat-cli`): Implements `generate()` for command-line text generation
+- **Inference Server** (`nanochat-inference`): Implements generation for web API
+
+This separation follows the plan's architecture where:
+- Model crate = Core architecture (forward pass, checkpoints)
+- Training crates = Training loops and optimizer setup
+- Inference crates = Text generation and sampling strategies
+
+**Python Reference Alignment**: Python's `GPT.generate()` combines model forward pass with sampling. In Rust, this is split:
+- Model provides `forward_cache()` with KV cache
+- Inference crates implement sampling (greedy, temperature, top-k, top-p)
 
 ### Phase 6: Integration & Testing
 **LLMOps Step**: End-to-End Validation

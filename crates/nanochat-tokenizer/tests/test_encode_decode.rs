@@ -7,7 +7,7 @@ fn test_encode_basic() {
     let tokenizer = create_test_tokenizer();
     let text = "hello world";
 
-    let ids = tokenizer.encode(text).unwrap();
+    let ids = tokenizer.encode(text).expect("Failed to encode to token IDs");
     assert!(!ids.is_empty());
 }
 
@@ -16,8 +16,8 @@ fn test_decode_basic() {
     let tokenizer = create_test_tokenizer();
     let text = "hello world";
 
-    let ids = tokenizer.encode(text).unwrap();
-    let decoded = tokenizer.decode(&ids).unwrap();
+    let ids = tokenizer.encode(text).expect("Failed to encode to token IDs");
+    let decoded = tokenizer.decode(&ids).expect("Failed to decode to text string");
 
     // Decoded text should match original (may have whitespace normalization)
     assert_eq!(decoded.trim(), text.trim());
@@ -26,7 +26,7 @@ fn test_decode_basic() {
 #[test]
 fn test_encode_decode_roundtrip() {
     let tokenizer = create_test_tokenizer();
-    let texts = vec![
+    let texts = [
         "hello world",
         "The quick brown fox",
         "Rust is awesome!",
@@ -34,8 +34,8 @@ fn test_encode_decode_roundtrip() {
     ];
 
     for text in texts {
-        let ids = tokenizer.encode(text).unwrap();
-        let decoded = tokenizer.decode(&ids).unwrap();
+        let ids = tokenizer.encode(text).expect("Failed to encode to token IDs");
+        let decoded = tokenizer.decode(&ids).expect("Failed to decode to text string");
         // Aprender's tokenizer may normalize whitespace, so just verify roundtrip doesn't panic
         assert!(!decoded.is_empty() || ids.is_empty());
     }
@@ -46,10 +46,10 @@ fn test_encode_unicode() {
     let tokenizer = create_test_tokenizer();
     let text = "Hello 世界 🌍";
 
-    let ids = tokenizer.encode(text).unwrap();
+    let ids = tokenizer.encode(text).expect("Failed to encode to token IDs");
     assert!(!ids.is_empty());
 
-    let decoded = tokenizer.decode(&ids).unwrap();
+    let decoded = tokenizer.decode(&ids).expect("Failed to decode to text string");
     // Unicode may not decode perfectly, just verify it doesn't panic
     assert!(!decoded.is_empty() || ids.is_empty());
 }
@@ -59,7 +59,7 @@ fn test_encode_empty_string() {
     let tokenizer = create_test_tokenizer();
     let text = "";
 
-    let ids = tokenizer.encode(text).unwrap();
+    let ids = tokenizer.encode(text).expect("Failed to encode to token IDs");
     // Empty string should encode to empty or just special tokens
     assert!(ids.is_empty() || ids.len() <= 1);
 }
@@ -67,25 +67,25 @@ fn test_encode_empty_string() {
 #[test]
 fn test_decode_empty_ids() {
     let tokenizer = create_test_tokenizer();
-    let ids = vec![];
+    let ids = [];
 
-    let decoded = tokenizer.decode(&ids).unwrap();
+    let decoded = tokenizer.decode(&ids).expect("Failed to decode to text string");
     assert_eq!(decoded, "");
 }
 
 #[test]
 fn test_encode_multiple_texts() {
     let tokenizer = create_test_tokenizer();
-    let texts = vec!["hello", "world", "rust"];
+    let texts = ["hello", "world", "rust"];
 
-    let all_ids = tokenizer.encode_batch(&texts).unwrap();
+    let all_ids = tokenizer.encode_batch(&texts).expect("Failed to encode batch");
     assert_eq!(all_ids.len(), texts.len());
 }
 
 // Helper function to create a test tokenizer
 fn create_test_tokenizer() -> Tokenizer {
     // Create a small tokenizer for testing
-    let corpus = vec![
+    let corpus = [
         "hello world",
         "hello rust",
         "world peace",

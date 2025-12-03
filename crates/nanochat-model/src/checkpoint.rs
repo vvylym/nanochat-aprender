@@ -153,7 +153,7 @@ mod tests {
     fn test_save_checkpoint() {
         let config = GPTConfig::default();
         let model = GPT::new(config);
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("Failed to create temporary directory");
         let checkpoint_path = temp_dir.path().join("model");
 
         let result = save_checkpoint(&model, &checkpoint_path, None);
@@ -168,14 +168,15 @@ mod tests {
     fn test_load_checkpoint() {
         let config = GPTConfig::default();
         let model = GPT::new(config);
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("Failed to create temporary directory");
         let checkpoint_path = temp_dir.path().join("model");
 
         // Save checkpoint
-        save_checkpoint(&model, &checkpoint_path, None).unwrap();
+        save_checkpoint(&model, &checkpoint_path, None).expect("Failed to save checkpoint");
 
         // Load checkpoint
-        let (loaded_model, metadata) = load_checkpoint(&checkpoint_path).unwrap();
+        let (loaded_model, metadata) =
+            load_checkpoint(&checkpoint_path).expect("Failed to load checkpoint");
 
         // Verify config matches
         assert_eq!(loaded_model.config(), model.config());
@@ -188,7 +189,7 @@ mod tests {
     fn test_checkpoint_roundtrip() {
         let config = GPTConfig::default();
         let model = GPT::new(config);
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("Failed to create temporary directory");
         let checkpoint_path = temp_dir.path().join("model");
 
         let metadata = CheckpointMetadata {
@@ -199,10 +200,12 @@ mod tests {
         };
 
         // Save with metadata
-        save_checkpoint(&model, &checkpoint_path, Some(metadata.clone())).unwrap();
+        save_checkpoint(&model, &checkpoint_path, Some(metadata.clone()))
+            .expect("Failed to save checkpoint");
 
         // Load and verify
-        let (_, loaded_metadata) = load_checkpoint(&checkpoint_path).unwrap();
+        let (_, loaded_metadata) =
+            load_checkpoint(&checkpoint_path).expect("Failed to load checkpoint");
         assert_eq!(loaded_metadata.step, metadata.step);
         assert_eq!(loaded_metadata.loss, metadata.loss);
         assert_eq!(loaded_metadata.learning_rate, metadata.learning_rate);
@@ -213,10 +216,10 @@ mod tests {
         // Test version validation (checksum removed in favor of SafeTensors format)
         let config = GPTConfig::default();
         let model = GPT::new(config);
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("Failed to create temporary directory");
         let checkpoint_path = temp_dir.path().join("model");
 
-        save_checkpoint(&model, &checkpoint_path, None).unwrap();
+        save_checkpoint(&model, &checkpoint_path, None).expect("Failed to save checkpoint");
 
         // Load should succeed with valid checkpoint
         let result = load_checkpoint(&checkpoint_path);
@@ -224,7 +227,7 @@ mod tests {
 
         // Corrupt SafeTensors file
         let safetensors_path = checkpoint_path.with_extension("safetensors");
-        fs::write(&safetensors_path, b"corrupted").unwrap();
+        fs::write(&safetensors_path, b"corrupted").expect("Failed to write corrupted file");
 
         // Load should fail with corrupted weights
         let result = load_checkpoint(&checkpoint_path);

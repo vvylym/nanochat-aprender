@@ -45,6 +45,7 @@ pub mod attention;
 pub mod checkpoint;
 pub mod config;
 pub mod gpt;
+mod init;
 pub mod mlp;
 pub mod norm;
 pub mod rope;

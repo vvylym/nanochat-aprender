@@ -1,16 +1,24 @@
 # Feature Specification: Production-Grade Rust Port of Nanochat
 
 **Feature Branch**: `001-rust-nanochat-port`  
-**Created**: 2025-01-27  
+**Created**: 2025-12-01
 **Status**: Draft  
 **Input**: User description: "a full 100% tested and production grade port of nanochat located in @nanochat by Karpathy in Rust programming language taking as examples implementation in @nanochat-rs and @nanogpt-rs but leveraging the new available using the new available of classical machine learning algorithms optimized for performance and safety in pure Rust with zero C/C++ dependencies and strictly align to their code of conduct and practices"
 
 ## Clarifications
 
-### Session 2025-01-27
+### Session 2025-12-01
 
 - Q: What ML framework dependencies are allowed? → A: Strictly aprender crate for all ML operations. If aprender does not provide needed functionality, implement using trueno and nalgebra directly. Aprender provides GPU support via `gpu` feature (wgpu backend through trueno) and CPU support. Aprender forks: @aprender, trueno fork: @trueno, nalgebra fork: @nalgebra
 - Q: What non-ML dependencies are allowed? → A: For non-ML functionality, use actix-web (web serving), tokio (async runtime), and serde (serialization) to provide robust inference with caching support. For CLI, use clap with indicatif for real-time features including streaming. Architecture: modular crate structure with model as separate crate, each ML cycle step as its own crate, and inference server as its own crate
+
+### Session 2025-12-03
+
+- Q: Should checkpoint and tokenizer formats be explicitly specified? → A: Yes - explicitly specify SafeTensors format for model checkpoints and JSON format (`tokenizer.json`) for tokenizer serialization
+- Q: How should device selection be specified? → A: Explicitly specify compile-time device selection via `gpu` feature flag (no runtime `--device` option), with CPU fallback when GPU feature is not enabled
+- Q: Should Aprender API reuse requirements be explicitly specified? → A: Yes - add explicit requirement referencing Principle VII, mandating use of aprender's APIs for weight initialization, dropout, loss functions, optimizers, and serialization
+- Q: Should mandatory quality gates be explicitly specified? → A: Yes - add explicit requirement that all tasks MUST pass mandatory quality gates before completion: formatting (`cargo fmt --all`), linting (`cargo clippy --workspace --all-features --all-targets`), and testing (`cargo test --workspace --all-features`)
+- Q: Should architecture method deferrals be documented? → A: Yes - document that `generate()` method is implemented in inference crates (CLI, inference server), not model crate, and `setup_optimizers()` is implemented in training crates, not model crate - model crate provides core forward pass only
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -116,7 +124,7 @@ A user wants to train a custom tokenizer on their dataset or use an existing tok
 - **FR-001**: System MUST implement a decoder-only transformer architecture with configurable depth (number of layers)
 - **FR-002**: System MUST support rotary position embeddings (RoPE) for relative positional encoding
 - **FR-003**: System MUST implement QK normalization for attention stability
-- **FR-004**: System MUST use RMSNorm for layer normalization without learnable parameters
+- **FR-004**: System MUST use RMSNorm for layer normalization without learnable parameters using `aprender::nn::RMSNorm` (per Principle VII, FR-086)
 - **FR-005**: System MUST support Group-Query Attention (GQA) with configurable query and key-value head counts
 - **FR-006**: System MUST use ReLU² activation in MLP layers
 - **FR-007**: System MUST implement untied weights between token embedding and language model head
@@ -125,34 +133,39 @@ A user wants to train a custom tokenizer on their dataset or use an existing tok
 
 #### Inference and Generation
 
-- **FR-010**: System MUST support efficient inference with KV cache for autoregressive generation
-- **FR-011**: System MUST implement multiple sampling strategies: greedy, temperature scaling, top-k, and top-p (nucleus) sampling
+- **FR-010**: System MUST support efficient inference with KV cache for autoregressive generation (model crate provides `forward_cache()` method)
+- **FR-011**: System MUST implement multiple sampling strategies: greedy, temperature scaling, top-k, and top-p (nucleus) sampling (implemented in inference crates, not model crate)
 - **FR-012**: System MUST support configurable generation parameters (temperature, top-k, top-p, max tokens)
-- **FR-013**: System MUST generate text token-by-token with streaming support
+- **FR-013**: System MUST generate text token-by-token with streaming support (implemented in inference crates via `generate()` method, not in model crate)
 - **FR-014**: System MUST handle context windows up to the configured maximum sequence length
 - **FR-015**: System MUST support batch inference for processing multiple prompts simultaneously
+- **FR-090**: System MUST implement `generate()` method in inference crates (nanochat-cli, nanochat-inference), not in model crate - model crate provides core forward pass with KV cache support via `forward_cache()` method only
 
 #### Training Pipeline
 
-- **FR-016**: System MUST support distributed training across multiple devices/nodes
-- **FR-017**: System MUST implement AdamW optimizer with configurable hyperparameters
+- **FR-016**: System MUST support distributed training across multiple devices/nodes (device selection is compile-time via `gpu` feature flag, not runtime)
+- **FR-017**: System MUST implement AdamW optimizer with configurable hyperparameters using `aprender::nn::optim::AdamW` (per Principle VII, FR-086) - optimizer setup via `setup_optimizers()` is implemented in training crates (nanochat-pretrain, nanochat-midtrain, nanochat-sft), not in model crate
 - **FR-018**: System MUST support gradient accumulation for effective larger batch sizes
 - **FR-019**: System MUST save training checkpoints at configurable intervals
 - **FR-020**: System MUST support resuming training from saved checkpoints
+- **FR-091**: System MUST implement `setup_optimizers()` method in training crates (nanochat-pretrain, nanochat-midtrain, nanochat-sft), not in model crate - model crate provides `parameters()` and `parameters_mut()` methods only, training crates configure optimizers using aprender's optimizers
 - **FR-021**: System MUST implement pretraining stage for base language modeling
 - **FR-022**: System MUST implement mid-training stage for conversational fine-tuning
 - **FR-023**: System MUST implement supervised fine-tuning (SFT) stage for instruction following
-- **FR-024**: System MUST support learning rate scheduling with warmup and decay
+- **FR-024**: System MUST support learning rate scheduling with warmup and decay using aprender's schedulers (`aprender::nn::scheduler::{WarmupCosineScheduler, LinearWarmup, ...}` per Principle VII, FR-086)
 - **FR-025**: System MUST log training metrics (loss, learning rate, throughput) during training
+- **FR-087**: System MUST compute training loss using `aprender::nn::loss::CrossEntropyLoss` (per Principle VII, FR-086) - custom loss implementations are FORBIDDEN
 
 #### Tokenization
 
-- **FR-026**: System MUST implement BPE (Byte Pair Encoding) tokenizer training
+- **FR-026**: System MUST implement BPE (Byte Pair Encoding) tokenizer using aprender's `BpeTokenizer` directly (wraps aprender API per Principle VII, no custom BPE implementation)
 - **FR-027**: System MUST support encoding text to token IDs
 - **FR-028**: System MUST support decoding token IDs to text
-- **FR-029**: System MUST handle special tokens (beginning-of-text, end-of-text, padding, etc.)
+- **FR-029**: System MUST handle special tokens (beginning-of-text, end-of-text, padding, etc.) via aprender's tokenizer API
 - **FR-030**: System MUST support configurable vocabulary size
 - **FR-031**: System MUST preserve text fidelity during encode/decode round-trips (within tokenization limitations)
+- **FR-084**: System MUST serialize tokenizer to JSON format (`tokenizer.json`) containing vocabulary and BPE merges (compact JSON, no pretty-printing)
+- **FR-085**: System MUST load tokenizer from JSON format (`tokenizer.json`) with vocabulary and merges validation
 
 #### Data Management
 
@@ -175,10 +188,10 @@ A user wants to train a custom tokenizer on their dataset or use an existing tok
 
 #### Model Persistence
 
-- **FR-045**: System MUST save model checkpoints including weights and configuration
-- **FR-046**: System MUST load model checkpoints for inference or continued training
-- **FR-047**: System MUST validate checkpoint integrity during loading
-- **FR-048**: System MUST support checkpoint format compatibility across versions
+- **FR-045**: System MUST save model checkpoints including weights and configuration in SafeTensors format (`.safetensors` file for weights, JSON for metadata) via aprender's serialization API
+- **FR-046**: System MUST load model checkpoints for inference or continued training from SafeTensors format (aprender validates format on load)
+- **FR-047**: System MUST validate checkpoint integrity during loading (SafeTensors format validation via aprender)
+- **FR-048**: System MUST support checkpoint format compatibility across versions (SafeTensors format with version metadata in JSON)
 
 #### Web Interface
 
@@ -200,11 +213,12 @@ A user wants to train a custom tokenizer on their dataset or use an existing tok
 - **FR-057**: System MUST compile without warnings using standard Rust tooling
 - **FR-058**: System MUST have zero C/C++ dependencies (pure Rust implementation)
 - **FR-059**: System MUST use aprender crate exclusively for all machine learning operations (tensor operations, neural network layers, optimizers). If aprender does not provide required functionality, System MUST implement using trueno and nalgebra directly
+- **FR-086**: System MUST comply with Principle VII (Aprender API Reuse) - MUST use aprender's built-in APIs before implementing custom solutions: weight initialization via `aprender::nn::init::{normal, uniform, xavier_*, kaiming_*}` with proper seeding, dropout via `aprender::nn::Dropout` or `rand::rngs::StdRng` with `SeedableRng::seed_from_u64()`, loss functions via `aprender::nn::loss::{CrossEntropyLoss, MSELoss, ...}`, optimizers via `aprender::nn::optim::{Adam, AdamW, SGD, ...}`, and serialization via `aprender::nn::serialize::{save_model, load_model}`. Custom implementations that duplicate aprender functionality are FORBIDDEN
 - **FR-060**: System MUST implement numerical stability checks for all mathematical operations
 - **FR-061**: System MUST handle memory allocation failures gracefully
 - **FR-062**: System MUST prevent buffer overflows and memory safety violations
-- **FR-063**: System MUST support GPU acceleration via aprender's `gpu` feature (wgpu backend through trueno) for matrix operations and training
-- **FR-064**: System MUST support CPU fallback when GPU is unavailable, using aprender with CPU/SIMD acceleration via trueno
+- **FR-063**: System MUST support GPU acceleration via aprender's `gpu` feature flag at compile time (wgpu backend through trueno) for matrix operations and training. Device selection is compile-time, not runtime - build with `--features gpu` for GPU support
+- **FR-064**: System MUST support CPU fallback when GPU feature is not enabled at compile time, using aprender with CPU/SIMD acceleration via trueno. No runtime device switching - device is determined by feature flags
 
 #### Testing and Quality
 
@@ -214,6 +228,7 @@ A user wants to train a custom tokenizer on their dataset or use an existing tok
 - **FR-068**: System MUST include benchmarks for performance-critical paths
 - **FR-069**: System MUST pass all tests before code can be merged
 - **FR-070**: System MUST maintain numerical parity with reference implementation within acceptable tolerance
+- **FR-089**: System MUST use `.expect("descriptive error message")` instead of `.unwrap()` in ALL test code (unit tests, integration tests, doc tests) - `.unwrap()` is FORBIDDEN in tests to enable easy debugging with context when tests fail
 
 #### Code Quality and Documentation
 
@@ -223,18 +238,19 @@ A user wants to train a custom tokenizer on their dataset or use an existing tok
 - **FR-074**: System MUST pass clippy lints without warnings
 - **FR-075**: System MUST include inline comments explaining complex algorithms
 - **FR-076**: System MUST maintain minimal, readable codebase without excessive abstraction
+- **FR-088**: System MUST pass mandatory quality gates before marking any task as complete: formatting (`cargo fmt --all` - all code MUST be formatted), linting (`cargo clippy --workspace --all-features --all-targets` - all code MUST pass clippy checks with no warnings), and testing (`cargo test --workspace --all-features` - all tests MUST pass including unit tests, integration tests, and doc tests)
 
 #### Architecture and Modularity
 
-- **FR-077**: System MUST be organized as a modular workspace with separate crates: model crate (core model implementation), individual ML cycle step crates (pretraining, mid-training, SFT, evaluation), and inference server crate
-- **FR-078**: System MUST implement CLI interface using clap with indicatif for real-time progress display and streaming output
-- **FR-079**: System MUST implement inference server as separate crate using actix-web with tokio for async processing
+- **FR-077**: System MUST be organized as a modular workspace with separate crates: model crate (core model implementation with forward pass only), individual ML cycle step crates (pretraining, mid-training, SFT, evaluation), and inference server crate. Model crate does NOT implement `generate()` (deferred to inference crates) or `setup_optimizers()` (deferred to training crates)
+- **FR-078**: System MUST implement CLI interface using clap with indicatif for real-time progress display and streaming output - CLI crate implements `generate()` method for text generation
+- **FR-079**: System MUST implement inference server as separate crate using actix-web with tokio for async processing - inference server crate implements `generate()` method for web API
 
 ### Key Entities
 
-- **Model Checkpoint**: Represents a saved state of a trained model, containing model weights, configuration parameters, training metadata (step count, loss values), and version information. Used for resuming training or loading models for inference.
+- **Model Checkpoint**: Represents a saved state of a trained model, containing model weights (stored in SafeTensors format via aprender), configuration parameters, training metadata (step count, loss values stored as JSON), and version information. Used for resuming training or loading models for inference. Format: SafeTensors (`.safetensors`) for weights, JSON for metadata.
 
-- **Tokenizer**: Represents the text tokenization component that converts between text and token sequences. Contains vocabulary mappings, special token definitions, and encoding/decoding logic. Essential for all text processing operations.
+- **Tokenizer**: Represents the text tokenization component that converts between text and token sequences. Wraps aprender's `BpeTokenizer` directly (no custom BPE implementation per Principle VII). Serialized to JSON format (`tokenizer.json`) containing vocabulary and BPE merges. Essential for all text processing operations.
 
 - **Training Configuration**: Represents hyperparameters and settings for model training, including model architecture (depth, width, attention heads), optimizer settings (learning rate, weight decay), batch sizes, and training stage parameters. Determines model behavior and training process.
 
@@ -270,7 +286,7 @@ A user wants to train a custom tokenizer on their dataset or use an existing tok
 
 - **SC-011**: Training can resume from checkpoints with identical final model quality compared to uninterrupted training runs
 
-- **SC-012**: The system processes training data at a throughput of at least 1000 samples per second per GPU device during pretraining
+- **SC-012**: The system processes training data at a throughput of at least 1000 samples per second per GPU device during pretraining (when built with `gpu` feature flag enabled)
 
 - **SC-013**: All functional requirements (FR-001 through FR-083) are implemented and verified through automated testing
 - **SC-015**: The inference API is fully compatible with OpenAI's Chat Completions API format, enabling drop-in replacement in OpenAI-compatible applications

@@ -60,18 +60,28 @@
 
 ### Implementation for Tokenizer
 
-- [X] T019 [US5] Create `crates/nanochat-tokenizer/src/lib.rs` with public API exports
-- [X] T020 [US5] Implement `SpecialTokens` struct in `crates/nanochat-tokenizer/src/special_tokens.rs` with BOS, EOS, PAD token definitions
-- [X] T021 [US5] Implement `Vocabulary` struct in `crates/nanochat-tokenizer/src/vocab.rs` with token-to-ID and ID-to-token mappings
-- [X] T022 [US5] Implement BPE training algorithm in `crates/nanochat-tokenizer/src/bpe.rs` using aprender primitives
-- [X] T023 [US5] Implement `encode` method in `crates/nanochat-tokenizer/src/bpe.rs` to convert text to token IDs
-- [X] T024 [US5] Implement `decode` method in `crates/nanochat-tokenizer/src/bpe.rs` to convert token IDs to text
-- [X] T025 [US5] Implement `Tokenizer` struct in `crates/nanochat-tokenizer/src/lib.rs` combining vocab, BPE, and special tokens
+- [X] T019 [US5] Create `crates/nanochat-tokenizer/src/lib.rs` with public API exports wrapping `aprender::text::tokenize::BpeTokenizer` (per Principle VII, FR-026)
+- [X] T020 [US5] Integrate special tokens handling via `aprender::text::tokenize::BpeTokenizer` - special tokens (BOS, EOS, PAD) are handled by aprender's BPE tokenizer implementation in `crates/nanochat-tokenizer/src/lib.rs` (per Principle VII, no custom struct needed)
+- [X] T021 [US5] Integrate vocabulary management via `aprender::text::tokenize::BpeTokenizer` - vocabulary (token-to-ID and ID-to-token mappings) is provided by aprender's BPE tokenizer via `vocab()` and `merges()` methods in `crates/nanochat-tokenizer/src/lib.rs` (per Principle VII)
+- [X] T022 [US5] Integrate BPE training via `aprender::text::tokenize::BpeTokenizer::train()` - BPE training algorithm is provided by aprender's BPE tokenizer, called through `Tokenizer::train_from_iterator()` in `crates/nanochat-tokenizer/src/lib.rs` (per Principle VII, no custom implementation)
+- [X] T023 [US5] Integrate encoding via `aprender::text::tokenize::BpeTokenizer::encode()` - text-to-token-ID encoding is provided by aprender's BPE tokenizer, exposed through `Tokenizer::encode()` in `crates/nanochat-tokenizer/src/lib.rs` (per Principle VII)
+- [X] T024 [US5] Integrate decoding via `aprender::text::tokenize::BpeTokenizer::decode()` - token-ID-to-text decoding is provided by aprender's BPE tokenizer, exposed through `Tokenizer::decode()` in `crates/nanochat-tokenizer/src/lib.rs` (per Principle VII)
+- [X] T025 [US5] Implement `Tokenizer` struct in `crates/nanochat-tokenizer/src/lib.rs` wrapping `aprender::text::tokenize::BpeTokenizer` (per Principle VII, no custom BPE implementation)
 - [X] T026 [US5] Add comprehensive documentation for all public APIs in `crates/nanochat-tokenizer/src/lib.rs`
 - [X] T027 [US5] Add error handling for invalid inputs and edge cases in `crates/nanochat-tokenizer/src/lib.rs`
-- [X] T028 [US5] Implement tokenizer save/load functionality using aprender's `.apr` format in `crates/nanochat-tokenizer/src/lib.rs`
+- [X] T027.1 [US5] Implement `TokenizerData` struct in `crates/nanochat-tokenizer/src/lib.rs` for JSON serialization (vocabulary and merges only, per FR-084, FR-085)
+- [X] T028 [US5] Implement tokenizer save/load functionality using JSON format (`tokenizer.json`) in `crates/nanochat-tokenizer/src/lib.rs` - serializes `TokenizerData` struct (vocabulary and merges) to compact JSON, matching Python reference implementation. Note: SafeTensors format is used for model checkpoints only, not tokenizers
 
 **Checkpoint**: Tokenizer crate complete, all tests passing, can encode/decode text with 95%+ fidelity
+
+**Constitution Compliance Verification** (per REMEDIATION_PLAN.md Phase 6):
+- [X] C001 Verify all ML operations use aprender APIs (Principle VII) - Tokenizer uses `aprender::text::tokenize::BpeTokenizer` directly
+- [X] C002 Verify no custom RNG implementations (Principle VII) - N/A for tokenizer
+- [X] C003 Verify weight initialization uses aprender patterns (Principle VII) - N/A for tokenizer
+- [X] C004 Verify dropout uses aprender's Dropout (Principle VII) - N/A for tokenizer
+- [X] C005 Verify no C/C++ dependencies (Principle I) - All dependencies are pure Rust
+- [X] C006 Verify all public APIs have doc comments (Principle V) - All public APIs documented
+- [X] C007 Verify code compiles without warnings (Development Workflow) - Verified via quality gates
 
 ---
 
@@ -96,7 +106,7 @@
 
 - [X] T036 Create `crates/nanochat-model/src/lib.rs` with public API exports
 - [X] T037 Implement `ModelConfig` struct in `crates/nanochat-model/src/config.rs` with validation (vocab_size, n_layer, n_head, n_kv_head, n_embd, sequence_len, dropout)
-- [X] T038 Implement `RMSNorm` function in `crates/nanochat-model/src/norm.rs` using aprender primitives (no learnable parameters)
+- [X] T038 Implement `RMSNorm` function in `crates/nanochat-model/src/norm.rs` using `aprender::nn::RMSNorm` (per Principle VII, FR-004, FR-086 - no learnable parameters)
 - [X] T039 Implement `RotaryPositionEmbedding` in `crates/nanochat-model/src/rope.rs` using aprender's `RotaryPositionEmbedding` with precomputed frequencies
 - [X] T040 Implement QK normalization in `crates/nanochat-model/src/attention.rs` using aprender primitives (normalize queries and keys after RoPE)
 - [X] T041 Implement `GroupedQueryAttention` in `crates/nanochat-model/src/attention.rs` using aprender's `GroupedQueryAttention` with KV cache support
@@ -107,13 +117,36 @@
 - [X] T046 Implement language model head in `crates/nanochat-model/src/gpt.rs` (untied from embedding, separate parameters)
 - [X] T047 Implement `GPTModel` struct in `crates/nanochat-model/src/gpt.rs` with configurable depth (n_layer transformer blocks)
 - [X] T048 Implement forward pass in `crates/nanochat-model/src/gpt.rs` with KV cache support for inference
-- [X] T049 Implement checkpoint save functionality in `crates/nanochat-model/src/checkpoint.rs` using aprender's `.apr` format (weights, config, metadata)
-- [X] T050 Implement checkpoint load functionality in `crates/nanochat-model/src/checkpoint.rs` with integrity validation (checksum, version)
+- [X] T049 Implement checkpoint save functionality in `crates/nanochat-model/src/checkpoint.rs` using SafeTensors format (`.safetensors` file for weights via `aprender::nn::serialize::save_model()`, JSON for metadata) - per plan.md and FR-045
+- [X] T050 Implement checkpoint load functionality in `crates/nanochat-model/src/checkpoint.rs` with integrity validation (SafeTensors format validation via `aprender::nn::serialize::load_model()`, version metadata in JSON) - per plan.md and FR-046
 - [X] T051 Add comprehensive documentation for all public APIs in `crates/nanochat-model/src/lib.rs`
-- [X] T052 Add numerical stability checks for all mathematical operations (overflow, underflow, NaN detection)
+- [X] T052 Add numerical stability checks for all mathematical operations (overflow, underflow, NaN detection) in `crates/nanochat-model/src/stability.rs` using `Tensor::data()` for checks
 - [X] T053 Implement benchmark for forward pass performance in `crates/nanochat-model/benches/forward.rs`
+- [X] T053.1 [P] Verify 100% test coverage for all public APIs in `nanochat-model` crate using coverage tools
+- [X] T053.2 [P] Verify 100% test coverage for all public APIs in `nanochat-tokenizer` crate using coverage tools
+- [X] T053.3 [P] Run `cargo test --workspace --all-features` and verify all tests pass (per FR-088 quality gates)
+- [X] T053.4 [P] Run `cargo clippy --workspace --all-features --all-targets` and verify no warnings (per FR-088 quality gates)
+- [X] T053.5 [P] Run `cargo fmt --all` and verify all code is formatted (per FR-088 quality gates)
+- [X] T053.6 [P] Verify all tests use `.expect()` instead of `.unwrap()` (per FR-089, constitution requirement)
 
 **Checkpoint**: Model crate complete, all tests passing, can perform forward pass and save/load checkpoints
+
+**Constitution Compliance Verification** (per REMEDIATION_PLAN.md Phase 6):
+- [X] C008 Verify all ML operations use aprender APIs (Principle VII) - Uses `aprender::nn::RMSNorm`, `aprender::nn::init`, `aprender::nn::Dropout`, `aprender::nn::loss::CrossEntropyLoss`, `aprender::nn::serialize`
+- [X] C009 Verify no custom RNG implementations (Principle VII) - Uses `rand::rngs::StdRng` with proper seeding
+- [X] C010 Verify weight initialization uses aprender patterns (Principle VII) - Uses `aprender::nn::init::normal()` via `init_linear_weight()` helper
+- [X] C011 Verify dropout uses aprender's Dropout (Principle VII) - Uses `aprender::nn::Dropout` with proper seeding
+- [X] C012 Verify loss computation uses aprender APIs (Principle VII) - Uses `aprender::nn::loss::CrossEntropyLoss` (FR-087)
+- [X] C013 Verify checkpoint serialization uses aprender APIs (Principle VII) - Uses `aprender::nn::serialize::{save_model, load_model}` with SafeTensors format
+- [X] C014 Verify no C/C++ dependencies (Principle I) - All dependencies are pure Rust
+- [X] C015 Verify all public APIs have doc comments (Principle V) - All public APIs documented
+- [X] C016 Verify code compiles without warnings (Development Workflow) - Verified via quality gates
+
+**Architecture Notes**:
+- Model crate provides `forward_cache()` method for inference with KV cache support
+- `generate()` method is NOT in model crate - implemented in inference crates (CLI, inference server) per plan.md
+- `setup_optimizers()` method is NOT in model crate - implemented in training crates per plan.md
+- Device selection is compile-time via `gpu` feature flag, not runtime (no `get_device()` method)
 
 ---
 
@@ -133,18 +166,19 @@
 ### Implementation for Pretraining
 
 - [ ] T057 [US3] Create `crates/nanochat-pretrain/src/main.rs` with CLI entry point using clap
-- [ ] T058 [US3] Implement command-line argument parsing in `crates/nanochat-pretrain/src/main.rs` (config, data-dir, output-dir, resume, device, workers, etc.)
+- [ ] T058 [US3] Implement command-line argument parsing in `crates/nanochat-pretrain/src/main.rs` (config, data-dir, output-dir, resume, workers, etc.) - Note: No `--device` option (device selection is compile-time via `gpu` feature flag per plan.md)
 - [ ] T059 [US3] Implement `DataLoader` in `crates/nanochat-pretrain/src/dataloader.rs` with shuffling, batching, and tokenization
 - [ ] T060 [US3] Implement data sharding support in `crates/nanochat-pretrain/src/dataloader.rs` for large datasets
 - [ ] T061 [US3] Implement gradient accumulation logic in `crates/nanochat-pretrain/src/train.rs` for effective larger batch sizes
-- [ ] T062 [US3] Implement AdamW optimizer integration in `crates/nanochat-pretrain/src/optimizer.rs` using aprender's `AdamW` with configurable hyperparameters
-- [ ] T063 [US3] Implement learning rate scheduling in `crates/nanochat-pretrain/src/optimizer.rs` using aprender's `WarmupCosineScheduler`
-- [ ] T064 [US3] Implement training loop in `crates/nanochat-pretrain/src/train.rs` with forward pass, backward pass, and optimizer step
-- [ ] T065 [US3] Implement checkpoint saving at intervals in `crates/nanochat-pretrain/src/train.rs` using model's checkpoint functionality
-- [ ] T066 [US3] Implement checkpoint resumption in `crates/nanochat-pretrain/src/train.rs` to resume from saved checkpoints
-- [ ] T067 [US3] Implement training metrics logging in `crates/nanochat-pretrain/src/metrics.rs` (loss, learning rate, throughput)
+- [ ] T062 [US3] Implement AdamW optimizer integration in `crates/nanochat-pretrain/src/optimizer.rs` using `aprender::nn::optim::AdamW` with configurable hyperparameters (per Principle VII, FR-017, FR-086) - Note: This implements the `setup_optimizers()` functionality from Python reference, configuring separate optimizers for different parameter groups (embedding, LM head, matrix params) using model's `parameters()` and `parameters_mut()` methods
+- [ ] T063 [US3] Implement learning rate scheduling in `crates/nanochat-pretrain/src/optimizer.rs` using `aprender::nn::scheduler::WarmupCosineScheduler` (per Principle VII, FR-024, FR-086)
+- [ ] T064 [US3] Implement training loop in `crates/nanochat-pretrain/src/train.rs` with forward pass (using model's `forward_training()` with `aprender::nn::loss::CrossEntropyLoss` per FR-087, FR-086), backward pass, and optimizer step
+- [ ] T065 [US3] Implement checkpoint saving at intervals in `crates/nanochat-pretrain/src/train.rs` using model's checkpoint functionality (SafeTensors format per FR-045, FR-046)
+- [ ] T066 [US3] Implement checkpoint resumption in `crates/nanochat-pretrain/src/train.rs` to resume from saved checkpoints (SafeTensors format per FR-020, FR-046)
+- [ ] T067 [US3] Implement training metrics logging in `crates/nanochat-pretrain/src/metrics.rs` (loss, learning rate, throughput) per FR-025
 - [ ] T068 [US3] Add comprehensive documentation for CLI interface and training process in `crates/nanochat-pretrain/src/main.rs`
 - [ ] T069 [US3] Add error handling for training failures and checkpoint errors in `crates/nanochat-pretrain/src/train.rs`
+- [ ] T069.1 [US3] [P] Run quality gates before marking pretraining complete: `cargo fmt --all`, `cargo clippy --workspace --all-features --all-targets`, `cargo test --workspace --all-features` (per FR-088)
 
 **Checkpoint**: Pretraining crate complete, can train base model and save checkpoints
 
@@ -165,7 +199,7 @@
 ### Implementation for Mid-Training
 
 - [ ] T072 [US3] Create `crates/nanochat-midtrain/src/main.rs` with CLI entry point using clap
-- [ ] T073 [US3] Implement command-line argument parsing in `crates/nanochat-midtrain/src/main.rs` (config, base-model, data-dir, output-dir, resume, device, workers, etc.)
+- [ ] T073 [US3] Implement command-line argument parsing in `crates/nanochat-midtrain/src/main.rs` (config, base-model, data-dir, output-dir, resume, workers, etc.) - Note: No `--device` option (device selection is compile-time via `gpu` feature flag per plan.md)
 - [ ] T074 [US3] Implement conversational data loading in `crates/nanochat-midtrain/src/dataloader.rs` with conversation format support
 - [ ] T075 [US3] Implement training loop in `crates/nanochat-midtrain/src/train.rs` reusing pretraining infrastructure but with conversational data
 - [ ] T076 [US3] Implement checkpoint saving and resumption in `crates/nanochat-midtrain/src/train.rs`
@@ -192,7 +226,7 @@
 ### Implementation for SFT
 
 - [ ] T082 [US3] Create `crates/nanochat-sft/src/main.rs` with CLI entry point using clap
-- [ ] T083 [US3] Implement command-line argument parsing in `crates/nanochat-sft/src/main.rs` (config, base-model, data-dir, output-dir, resume, device, workers, etc.)
+- [ ] T083 [US3] Implement command-line argument parsing in `crates/nanochat-sft/src/main.rs` (config, base-model, data-dir, output-dir, resume, workers, etc.) - Note: No `--device` option (device selection is compile-time via `gpu` feature flag per plan.md)
 - [ ] T084 [US3] Implement instruction-following data loading in `crates/nanochat-sft/src/dataloader.rs` with instruction-response format support
 - [ ] T085 [US3] Implement training loop in `crates/nanochat-sft/src/train.rs` reusing training infrastructure but with instruction data
 - [ ] T086 [US3] Implement checkpoint saving and resumption in `crates/nanochat-sft/src/train.rs`
@@ -229,7 +263,7 @@
 - [ ] T100 [US4] Implement ChatCORE conversational benchmark evaluation in `crates/nanochat-eval/src/chatcore.rs`
 - [ ] T101 [US4] Implement evaluation report generation in `crates/nanochat-eval/src/report.rs` with scores and metrics
 - [ ] T102 [US4] Create `crates/nanochat-eval/src/main.rs` with CLI entry point using clap
-- [ ] T103 [US4] Implement command-line argument parsing in `crates/nanochat-eval/src/main.rs` (model, benchmarks, output-dir, device, batch-size, etc.)
+- [ ] T103 [US4] Implement command-line argument parsing in `crates/nanochat-eval/src/main.rs` (model, benchmarks, output-dir, batch-size, etc.) - Note: No `--device` option (device selection is compile-time via `gpu` feature flag per plan.md)
 - [ ] T104 [US4] Add comprehensive documentation for all benchmarks and CLI interface in `crates/nanochat-eval/src/lib.rs`
 - [ ] T105 [US4] Add error handling for benchmark execution failures in `crates/nanochat-eval/src/lib.rs`
 
@@ -253,16 +287,17 @@
 ### Implementation for CLI
 
 - [ ] T108 [US1] Create `crates/nanochat-cli/src/main.rs` with CLI entry point using clap
-- [ ] T109 [US1] Implement `infer` command in `crates/nanochat-cli/src/commands/infer.rs` with argument parsing (model, prompt, temperature, top-k, top-p, max-tokens, seed, device, stream)
+- [ ] T109 [US1] Implement `infer` command in `crates/nanochat-cli/src/commands/infer.rs` with argument parsing (model, prompt, temperature, top-k, top-p, max-tokens, seed, stream) - Note: No `--device` option (device selection is compile-time via `gpu` feature flag per plan.md). This implements the `generate()` functionality from Python reference using model's `forward_cache()` method
 - [ ] T110 [US1] Implement model loading in `crates/nanochat-cli/src/commands/infer.rs` using model crate's checkpoint loading
 - [ ] T111 [US1] Implement tokenizer loading in `crates/nanochat-cli/src/commands/infer.rs` using tokenizer crate
-- [ ] T112 [US1] Implement text generation loop in `crates/nanochat-cli/src/commands/infer.rs` with KV cache for autoregressive generation
+- [ ] T112 [US1] Implement text generation loop in `crates/nanochat-cli/src/commands/infer.rs` with KV cache for autoregressive generation - Note: This implements the `generate()` functionality from Python reference, using model's `forward_cache()` method. Model crate provides core forward pass only, CLI crate implements generation and sampling
 - [ ] T113 [US1] Implement sampling strategies in `crates/nanochat-cli/src/commands/infer.rs` (greedy, temperature, top-k, top-p, combined)
 - [ ] T114 [US1] Implement streaming text output in `crates/nanochat-cli/src/commands/infer.rs` with token-by-token generation
 - [ ] T115 [US1] Implement progress bars using indicatif in `crates/nanochat-cli/src/ui.rs` for real-time generation feedback
 - [ ] T116 [US1] Implement context window truncation handling in `crates/nanochat-cli/src/commands/infer.rs` for prompts exceeding max length
 - [ ] T117 [US1] Add comprehensive documentation for CLI interface in `crates/nanochat-cli/src/main.rs`
 - [ ] T118 [US1] Add error handling for model loading, tokenization, and generation errors in `crates/nanochat-cli/src/commands/infer.rs`
+- [ ] T118.1 [US1] [P] Run quality gates before marking CLI complete: `cargo fmt --all`, `cargo clippy --workspace --all-features --all-targets`, `cargo test --workspace --all-features` (per FR-088)
 
 **Checkpoint**: CLI crate complete, can generate text from command line with streaming and progress indicators
 
@@ -289,7 +324,7 @@
 - [ ] T124 [US2] Implement actix-web server setup in `crates/nanochat-inference/src/server.rs` with configurable host, port, and workers
 - [ ] T125 [US2] Implement model loading and management in `crates/nanochat-inference/src/server.rs` with support for multiple model replicas
 - [ ] T126 [US2] Implement OpenAI-compatible request parsing in `crates/nanochat-inference/src/handlers.rs` (model, messages, temperature, top_p, max_tokens, stream, etc.)
-- [ ] T127 [US2] Implement OpenAI-compatible non-streaming response format in `crates/nanochat-inference/src/handlers.rs` (id, object, created, model, choices, usage)
+- [ ] T127 [US2] Implement OpenAI-compatible non-streaming response format in `crates/nanochat-inference/src/handlers.rs` (id, object, created, model, choices, usage) - Note: Uses model's `forward_cache()` method for generation, implementing Python's `generate()` functionality. Model crate provides core forward pass only, inference server implements generation and sampling
 - [ ] T128 [US2] Implement OpenAI-compatible streaming response format in `crates/nanochat-inference/src/streaming.rs` (chat.completion.chunk, delta objects, finish_reason)
 - [ ] T129 [US2] Implement Server-Sent Events (SSE) streaming in `crates/nanochat-inference/src/streaming.rs` using actix-web
 - [ ] T130 [US2] Implement conversation session management in `crates/nanochat-inference/src/session.rs` with message history and context window tracking
@@ -303,6 +338,7 @@
 - [ ] T138 [US2] Implement concurrent request handling using tokio async runtime in `crates/nanochat-inference/src/server.rs`
 - [ ] T139 [US2] Add comprehensive documentation for API endpoints in `crates/nanochat-inference/src/handlers.rs`
 - [ ] T140 [US2] Add error handling for all API endpoints in `crates/nanochat-inference/src/handlers.rs`
+- [ ] T140.1 [US2] [P] Run quality gates before marking inference server complete: `cargo fmt --all`, `cargo clippy --workspace --all-features --all-targets`, `cargo test --workspace --all-features` (per FR-088)
 
 **Checkpoint**: Inference server crate complete, can serve OpenAI-compatible API with streaming support
 
@@ -333,9 +369,11 @@
 
 ### Validation & Documentation
 
-- [ ] T151 Validate 100% test coverage for all public APIs using coverage tools
-- [ ] T152 Validate numerical parity with reference implementation (within tolerance: 1e-4 for logits, 1e-6 for outputs)
-- [ ] T153 Validate OpenAI API compatibility by testing against OpenAI-compatible client libraries
+- [ ] T151 Validate 100% test coverage for all public APIs using coverage tools (per FR-065)
+- [ ] T152 Validate numerical parity with reference implementation (within tolerance: 1e-4 for logits, 1e-6 for outputs) per FR-070
+- [ ] T153 Validate OpenAI API compatibility by testing against OpenAI-compatible client libraries (per FR-080-083, SC-015)
+- [ ] T153.1 [P] Run final quality gates across entire workspace: `cargo fmt --all`, `cargo clippy --workspace --all-features --all-targets`, `cargo test --workspace --all-features` (per FR-088)
+- [ ] T153.2 [P] Verify all tests use `.expect()` instead of `.unwrap()` across entire workspace (per FR-089, constitution requirement)
 - [ ] T154 Create comprehensive API documentation in `docs/api.md` with examples
 - [ ] T155 Update quickstart.md with actual working examples from implementation
 - [ ] T156 Create architecture documentation in `docs/architecture.md` explaining crate structure and data flow
@@ -450,7 +488,16 @@ With multiple developers:
 - Phases are sequential - each depends only on previous phases
 - Each phase should be independently testable and production-ready before moving to next phase
 - All tasks include exact file paths for immediate execution
-- Comprehensive documentation required for all public APIs
-- 100% test coverage required for all public APIs
-- All code must compile without warnings and pass clippy lints
+- Comprehensive documentation required for all public APIs (per FR-071)
+- 100% test coverage required for all public APIs (per FR-065)
+- All code must compile without warnings and pass clippy lints (per FR-057, FR-074)
+- **MANDATORY Quality Gates** (per FR-088, constitution): Before marking any task/phase complete, MUST pass:
+  - Formatting: `cargo fmt --all`
+  - Linting: `cargo clippy --workspace --all-features --all-targets`
+  - Testing: `cargo test --workspace --all-features`
+- **Test Error Handling** (per FR-089, constitution): All tests MUST use `.expect("descriptive message")` instead of `.unwrap()` for easier debugging
+- **Aprender API Reuse** (per FR-086, Principle VII): All ML operations MUST use aprender APIs - custom implementations that duplicate aprender functionality are FORBIDDEN
+- **Format Specifications**: Checkpoints use SafeTensors format (`.safetensors`), tokenizers use JSON format (`tokenizer.json`) per plan.md and spec.md
+- **Device Selection**: Compile-time via `gpu` feature flag, not runtime - no `--device` CLI option per plan.md
+- **Architecture Deferrals**: `generate()` in inference crates, `setup_optimizers()` in training crates - model crate provides core forward pass only per plan.md
 

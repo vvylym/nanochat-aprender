@@ -1,6 +1,6 @@
 //! Unit tests for ModelConfig validation
 
-use nanochat_model::{GPTConfig, config::ConfigError};
+use nanochat_model::{config::ConfigError, GPTConfig};
 
 #[test]
 fn test_config_default() {
@@ -12,15 +12,6 @@ fn test_config_default() {
     assert_eq!(config.n_head, 6);
     assert_eq!(config.n_kv_head, 6);
     assert_eq!(config.n_embd, 768);
-}
-
-#[test]
-fn test_config_validation_n_embd_divisible_by_n_head() {
-    let mut config = GPTConfig::default();
-    config.n_embd = 768;
-    config.n_head = 6;
-
-    // 768 / 6 = 128, should be valid
     assert_eq!(config.n_embd % config.n_head, 0);
 }
 
@@ -70,8 +61,10 @@ fn test_config_custom_values() {
 
 #[test]
 fn test_config_with_seed() {
-    let config1 = GPTConfig::new(1024, 50304, 12, 6, 6, 768, Some(0.0), Some(42)).unwrap();
-    let config2 = GPTConfig::new(1024, 50304, 12, 6, 6, 768, Some(0.0), Some(42)).unwrap();
+    let config1 = GPTConfig::new(1024, 50304, 12, 6, 6, 768, Some(0.0), Some(42))
+        .expect("Failed to create config");
+    let config2 = GPTConfig::new(1024, 50304, 12, 6, 6, 768, Some(0.0), Some(42))
+        .expect("Failed to create config");
 
     assert_eq!(config1.seed, Some(42));
     assert_eq!(config2.seed, Some(42));
@@ -83,24 +76,30 @@ fn test_config_seed_none() {
     let config = GPTConfig::default();
     assert_eq!(config.seed, None);
 
-    let config_with_seed =
-        GPTConfig::new(1024, 50304, 12, 6, 6, 768, Some(0.0), Some(123)).unwrap();
+    let config_with_seed = GPTConfig::new(1024, 50304, 12, 6, 6, 768, Some(0.0), Some(123))
+        .expect("Failed to create config");
     assert_eq!(config_with_seed.seed, Some(123));
 }
 
 #[test]
 fn test_validate_vocab_size_match() {
-    let config = GPTConfig::new(1024, 500, 12, 6, 6, 768, Some(0.0), None).unwrap();
+    let config =
+        GPTConfig::new(1024, 500, 12, 6, 6, 768, Some(0.0), None).expect("Failed to create config");
     assert!(config.validate_vocab_size(500).is_ok());
 }
 
 #[test]
 fn test_validate_vocab_size_mismatch() {
-    let config = GPTConfig::new(1024, 500, 12, 6, 6, 768, Some(0.0), None).unwrap();
+    let config =
+        GPTConfig::new(1024, 500, 12, 6, 6, 768, Some(0.0), None).expect("Failed to create config");
     let result = config.validate_vocab_size(600);
     assert!(result.is_err());
-    
-    if let Err(ConfigError::VocabSizeMismatch { config: c, tokenizer: t }) = result {
+
+    if let Err(ConfigError::VocabSizeMismatch {
+        config: c,
+        tokenizer: t,
+    }) = result
+    {
         assert_eq!(c, 500);
         assert_eq!(t, 600);
     } else {
@@ -121,8 +120,8 @@ fn test_with_tokenizer_vocab_size() {
         Some(0.0),
         None,
     )
-    .unwrap();
-    
+    .expect("Failed to create config");
+
     assert_eq!(config.vocab_size, tokenizer_vocab_size);
     assert!(config.validate_vocab_size(tokenizer_vocab_size).is_ok());
 }

@@ -1,6 +1,7 @@
 # Data Model
 
-**Date**: 2025-01-27  
+**Date**: 2025-12-01
+**Last Updated**: 2025-12-03
 **Phase**: 1 - Design & Contracts  
 **Status**: Complete
 
@@ -15,11 +16,14 @@ This document defines the core entities, their attributes, relationships, and va
 Represents a saved state of a trained model, containing all information needed to resume training or perform inference.
 
 **Attributes**:
-- `weights: HashMap<String, Tensor>` - Model parameter tensors keyed by parameter name
+- `weights: HashMap<String, Tensor>` - Model parameter tensors keyed by parameter name (stored in SafeTensors format)
 - `config: ModelConfig` - Model architecture configuration (depth, width, attention heads, etc.)
-- `metadata: CheckpointMetadata` - Training metadata (step count, loss values, learning rate, etc.)
-- `version: String` - Checkpoint format version for compatibility checking
-- `checksum: u32` - CRC32 checksum for integrity validation
+- `metadata: CheckpointMetadata` - Training metadata (step count, loss values, learning rate, etc.) stored as JSON
+- `format: CheckpointFormat` - Checkpoint format identifier (SafeTensors via aprender)
+
+**Storage Format**: 
+- Model weights: SafeTensors format (`.safetensors` file) via aprender's serialization
+- Metadata: JSON format for configuration and training metadata
 
 **Relationships**:
 - Used by: `TrainingSession`, `InferenceSession`
@@ -28,8 +32,8 @@ Represents a saved state of a trained model, containing all information needed t
 **Validation Rules**:
 - All required weights must be present
 - Config must match model architecture
-- Checksum must validate on load
-- Version must be compatible with current implementation
+- SafeTensors format must be valid (aprender validates on load)
+- Metadata JSON must be parseable
 
 **State Transitions**:
 - `Created` → `Saved` (checkpoint written to disk)
@@ -63,27 +67,29 @@ Represents model architecture hyperparameters and configuration.
 
 ### Tokenizer
 
-Represents the text tokenization component that converts between text and token sequences.
+Represents the text tokenization component that converts between text and token sequences. The implementation wraps aprender's `BpeTokenizer` directly, leveraging aprender's battle-tested BPE implementation per Principle VII.
 
 **Attributes**:
-- `vocab: HashMap<String, u32>` - Token to ID mapping
-- `vocab_inverse: HashMap<u32, String>` - ID to token mapping
-- `special_tokens: SpecialTokens` - Special token definitions (BOS, EOS, PAD, etc.)
-- `vocab_size: usize` - Total vocabulary size
-- `merges: Vec<(String, String)>` - BPE merge rules (for BPE tokenizers)
+- `bpe: aprender::BpeTokenizer` - Underlying BPE tokenizer from aprender (handles vocabulary, merges, special tokens)
+- `vocab_size: usize` - Total vocabulary size (derived from aprender's tokenizer)
+
+**Storage Format**:
+- Serialized to JSON format (`tokenizer.json`) containing:
+  - `vocabulary: HashMap<String, u32>` - Token to ID mapping
+  - `merges: Vec<(String, String)>` - BPE merge rules
 
 **Relationships**:
 - Used by: All training stages, inference, data loading
-- Produced by: `TokenizerTraining`
+- Wraps: `aprender::BpeTokenizer` (no custom BPE implementation)
+- Produced by: Tokenizer training or loading from JSON
 
 **Validation Rules**:
-- Vocab and vocab_inverse must be consistent (bidirectional mapping)
-- All special tokens must have valid IDs in vocab
-- Vocab size must match vocab map size
-- BPE merges must be valid (if applicable)
+- Vocabulary and merges must be valid (aprender validates)
+- Vocab size must match model configuration
+- JSON format must be parseable
 
 **State Transitions**:
-- `Untrained` → `Training` → `Trained` → `Loaded`
+- `Untrained` → `Training` → `Trained` → `Saved` (to JSON) → `Loaded` (from JSON)
 
 ### TrainingConfiguration
 
@@ -276,11 +282,12 @@ EvaluationResult
 ## Validation Rules Summary
 
 1. **Model Architecture**: All dimension constraints must be satisfied (divisibility, ranges)
-2. **Checkpoint Integrity**: Checksums must validate, versions must be compatible
+2. **Checkpoint Integrity**: SafeTensors format must be valid (aprender validates), metadata JSON must be parseable
 3. **Context Limits**: Context windows must not exceed model's max sequence length
 4. **Parameter Ranges**: All hyperparameters must be in valid ranges
 5. **Data Consistency**: Vocab mappings, message ordering, token counts must be consistent
 6. **File Existence**: Referenced files (checkpoints, datasets) must exist
+7. **Format Compliance**: Checkpoints use SafeTensors, tokenizers use JSON format
 
 ## State Machines
 

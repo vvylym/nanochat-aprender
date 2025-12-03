@@ -9,7 +9,7 @@ fn test_rms_norm_basic() {
     // RMSNorm: x / sqrt(mean(x^2) + eps)
     // This is a purely functional operation with no learnable parameters
     let x = Tensor::ones(&[2, 4]);
-    let result = rms_norm(&x).unwrap();
+    let result = rms_norm(&x).expect("Failed to apply RMSNorm");
 
     assert_eq!(result.shape(), x.shape());
 }
@@ -30,7 +30,7 @@ fn test_rms_norm_negative_values() {
     // Test RMSNorm with negative values
     // Should work correctly (squares are always positive)
     let x = Tensor::new(&[-1.0, -2.0, 1.0, 2.0], &[2, 2]);
-    let result = rms_norm(&x).unwrap();
+    let result = rms_norm(&x).expect("Failed to apply RMSNorm");
 
     assert_eq!(result.shape(), x.shape());
 }
@@ -40,7 +40,7 @@ fn test_rms_norm_large_values() {
     // Test RMSNorm with large values
     // Should not overflow
     let x = Tensor::new(&[100.0, 200.0, 300.0], &[1, 3]);
-    let result = rms_norm(&x).unwrap();
+    let result = rms_norm(&x).expect("Failed to apply RMSNorm");
 
     assert_eq!(result.shape(), x.shape());
     // Result should be normalized (smaller values)
@@ -53,7 +53,7 @@ fn test_rms_norm_small_values() {
     // Test RMSNorm with small values
     // Should not underflow
     let x = Tensor::new(&[0.001, 0.002, 0.003], &[1, 3]);
-    let result = rms_norm(&x).unwrap();
+    let result = rms_norm(&x).expect("Failed to apply RMSNorm");
 
     assert_eq!(result.shape(), x.shape());
 }
@@ -63,7 +63,7 @@ fn test_rms_norm_nan_detection() {
     // Test that RMSNorm handles NaN inputs gracefully
     // Note: Creating NaN tensors is tricky, so we'll just test that the function exists
     let x = Tensor::ones(&[2, 4]);
-    let result = rms_norm(&x).unwrap();
+    let result = rms_norm(&x).expect("Failed to apply RMSNorm");
 
     // Verify output doesn't contain NaN for normal input
     let result_data = result.data();

@@ -194,4 +194,4 @@ This constitution supersedes all other development practices and guidelines. All
 - Constitution violations are blocking issues and MUST be resolved before merge
 - Regular audits SHOULD be conducted to ensure ongoing compliance
 
-**Version**: 1.2.0 | **Ratified**: 2025-01-27 | **Last Amended**: 2025-01-27
+**Version**: 1.2.0 | **Ratified**: 2025-12-01 | **Last Amended**: 2025-12-03

@@ -1,6 +1,7 @@
 # Quickstart Guide
 
-**Date**: 2025-01-27  
+**Date**: 2025-12-01
+**Last Updated**: 2025-12-03
 **Phase**: 1 - Design & Contracts  
 **Status**: Complete
 
@@ -66,9 +67,11 @@ If you want to train a custom tokenizer:
 ```bash
 cargo run --release --bin nanochat-tokenizer -- train \
   --data-dir ./data \
-  --output ./tokenizer.apr \
+  --output ./tokenizer.json \
   --vocab-size 50304
 ```
+
+The tokenizer is saved in JSON format (`tokenizer.json`) containing vocabulary and BPE merges, compatible with aprender's `BpeTokenizer`.
 
 ### Step 3: Pretraining
 
@@ -106,7 +109,7 @@ cargo run --release --bin nanochat-pretrain -- \
   --output-dir ./output/pretrain
 ```
 
-Monitor progress with indicatif progress bars. Checkpoints are saved to `./output/pretrain/checkpoints/`.
+Monitor progress with indicatif progress bars. Checkpoints are saved to `./output/pretrain/checkpoints/` in SafeTensors format (`.safetensors` files for weights, JSON for metadata).
 
 ### Step 4: Mid-Training
 
@@ -115,7 +118,7 @@ Create mid-training configuration `midtrain.toml` (similar to pretrain.toml but 
 ```bash
 cargo run --release --bin nanochat-midtrain -- \
   --config midtrain.toml \
-  --base-model ./output/pretrain/checkpoints/final.apr \
+  --base-model ./output/pretrain/checkpoints/final.safetensors \
   --data-dir ./conversational_data \
   --output-dir ./output/midtrain
 ```
@@ -127,7 +130,7 @@ Create SFT configuration `sft.toml`:
 ```bash
 cargo run --release --bin nanochat-sft -- \
   --config sft.toml \
-  --base-model ./output/midtrain/checkpoints/final.apr \
+  --base-model ./output/midtrain/checkpoints/final.safetensors \
   --data-dir ./instruction_data \
   --output-dir ./output/sft
 ```
@@ -138,7 +141,7 @@ Evaluate your trained model on standard benchmarks:
 
 ```bash
 cargo run --release --bin nanochat-eval -- \
-  --model ./output/sft/checkpoints/final.apr \
+  --model ./output/sft/checkpoints/final.safetensors \
   --benchmarks all \
   --output-dir ./evaluation_results
 ```
@@ -155,7 +158,7 @@ Generate text from a prompt:
 
 ```bash
 cargo run --release --bin nanochat-cli -- infer \
-  --model ./output/sft/checkpoints/final.apr \
+  --model ./output/sft/checkpoints/final.safetensors \
   "Write a haiku about Rust programming"
 ```
 
@@ -163,7 +166,7 @@ With streaming (default):
 
 ```bash
 cargo run --release --bin nanochat-cli -- infer \
-  --model ./output/sft/checkpoints/final.apr \
+  --model ./output/sft/checkpoints/final.safetensors \
   --stream \
   "Explain machine learning"
 ```
@@ -176,7 +179,7 @@ Start the inference server:
 
 ```bash
 cargo run --release --bin nanochat-inference -- \
-  --model ./output/sft/checkpoints/final.apr \
+  --model ./output/sft/checkpoints/final.safetensors \
   --host 0.0.0.0 \
   --port 8000 \
   --workers 4
@@ -246,26 +249,26 @@ cargo run --release --bin nanochat-pretrain -- \
 # 2. Mid-training
 cargo run --release --bin nanochat-midtrain -- \
   --config configs/midtrain_d20.toml \
-  --base-model ./models/d20_pretrain/checkpoints/final.apr \
+  --base-model ./models/d20_pretrain/checkpoints/final.safetensors \
   --data-dir ./data/conversational \
   --output-dir ./models/d20_midtrain
 
 # 3. Supervised Fine-Tuning
 cargo run --release --bin nanochat-sft -- \
   --config configs/sft_d20.toml \
-  --base-model ./models/d20_midtrain/checkpoints/final.apr \
+  --base-model ./models/d20_midtrain/checkpoints/final.safetensors \
   --data-dir ./data/instructions \
   --output-dir ./models/d20_sft
 
 # 4. Evaluation
 cargo run --release --bin nanochat-eval -- \
-  --model ./models/d20_sft/checkpoints/final.apr \
+  --model ./models/d20_sft/checkpoints/final.safetensors \
   --benchmarks all \
   --output-dir ./evaluation/d20
 
 # 5. Inference
 cargo run --release --bin nanochat-cli -- infer \
-  --model ./models/d20_sft/checkpoints/final.apr \
+  --model ./models/d20_sft/checkpoints/final.safetensors \
   "Hello, how are you?"
 ```
 
@@ -275,20 +278,20 @@ cargo run --release --bin nanochat-cli -- infer \
 
 If GPU is not detected, check:
 - GPU drivers are installed
-- `gpu` feature is enabled: `cargo build --release --features gpu`
-- Device selection: Use `--device gpu` explicitly
+- `gpu` feature is enabled at compile time: `cargo build --release --features gpu`
+- Note: Device selection is compile-time via feature flags (not runtime via `--device` option)
 
 ### Out of Memory
 
 If you encounter OOM errors:
 - Reduce `device_batch_size` in configuration
 - Increase `gradient_accumulation_steps` to maintain effective batch size
-- Use CPU backend: `--device cpu`
+- Rebuild without GPU feature: `cargo build --release` (removes `--features gpu`)
 
 ### Slow Training
 
 To improve training speed:
-- Enable GPU: `--features gpu --device gpu`
+- Enable GPU at compile time: `cargo build --release --features gpu`
 - Increase `workers` for data loading
 - Use larger batch sizes (if memory allows)
 - Enable SIMD optimizations (automatic with trueno)
@@ -297,8 +300,9 @@ To improve training speed:
 
 If checkpoint loading fails:
 - Verify checkpoint file exists and is readable
-- Check checkpoint version compatibility
-- Validate checksum: checkpoints include integrity checks
+- Check SafeTensors format is valid (aprender validates on load)
+- Verify metadata JSON is parseable
+- Ensure checkpoint was created with compatible aprender version
 
 ## Next Steps
 

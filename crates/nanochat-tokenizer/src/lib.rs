@@ -12,14 +12,14 @@
 //! use nanochat_tokenizer::Tokenizer;
 //!
 //! // Train a tokenizer
-//! let corpus = vec!["hello world", "hello rust"];
-//! let tokenizer = Tokenizer::train_from_iterator(corpus.iter(), 500).unwrap();
+//! let corpus = ["hello world", "hello rust"];
+//! let tokenizer = Tokenizer::train_from_iterator(corpus.iter(), 500).expect("Failed to train tokenizer");
 //!
 //! // Encode text
-//! let ids = tokenizer.encode("hello world").unwrap();
+//! let ids = tokenizer.encode("hello world").expect("Encoding failed");
 //!
 //! // Decode back
-//! let text = tokenizer.decode(&ids).unwrap();
+//! let text = tokenizer.decode(&ids).expect("Decoding failed");
 //! ```
 
 // Re-export aprender types for backward compatibility
@@ -27,6 +27,21 @@ pub use aprender::text::tokenize::{BpeTokenizer, SpecialTokens};
 
 use anyhow::{Context, Result};
 use std::path::Path;
+
+/// Tokenizer data
+///
+/// This struct is used to serialize and deserialize the tokenizer data.
+/// It contains the vocabulary and merge rules for the tokenizer.
+/// It is used to save and load the tokenizer data.
+///
+/// Match Python reference: only vocabulary and merges are needed
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct TokenizerData {
+    /// Token to ID mapping
+    pub vocabulary: std::collections::HashMap<String, u32>,
+    /// BPE merge rules
+    pub merges: Vec<(String, String)>,
+}
 
 /// Main tokenizer interface combining BPE, vocabulary, and special tokens
 ///
@@ -55,11 +70,11 @@ impl Tokenizer {
         // This ensures the strings live long enough for aprender's API
         let corpus_owned: Vec<String> = text_iterator.map(|s| s.as_ref().to_string()).collect();
         let corpus: Vec<&str> = corpus_owned.iter().map(|s| s.as_str()).collect();
-        
+
         // Use aprender's BPE tokenizer
         let bpe = BpeTokenizer::train(&corpus, vocab_size)
             .map_err(|e| anyhow::anyhow!("Failed to train BPE tokenizer: {}", e))?;
-        
+
         Ok(Self { bpe })
     }
 
@@ -71,8 +86,7 @@ impl Tokenizer {
     /// # Returns
     /// Vector of token IDs
     pub fn encode(&self, text: &str) -> Result<Vec<u32>> {
-        self.bpe.encode(text)
-            .map_err(|e| anyhow::anyhow!("Encoding failed: {}", e))
+        self.bpe.encode(text).map_err(|e| anyhow::anyhow!("Encoding failed: {}", e))
     }
 
     /// Encode text with special tokens
@@ -126,8 +140,7 @@ impl Tokenizer {
     /// # Returns
     /// Decoded text
     pub fn decode(&self, ids: &[u32]) -> Result<String> {
-        self.bpe.decode(ids)
-            .map_err(|e| anyhow::anyhow!("Decoding failed: {}", e))
+        self.bpe.decode(ids).map_err(|e| anyhow::anyhow!("Decoding failed: {}", e))
     }
 
     /// Decode a batch of token ID sequences
@@ -187,22 +200,13 @@ impl Tokenizer {
             )
         })?;
 
-        // Deserialize tokenizer data
-        #[derive(serde::Deserialize)]
-        struct TokenizerData {
-            version: Option<String>,
-            vocab_size: usize,
-            vocabulary: std::collections::HashMap<String, u32>,
-            merges: Vec<(String, String)>,
-        }
-
         let data: TokenizerData =
             serde_json::from_str(&content).context("Failed to parse tokenizer JSON")?;
 
         // Reconstruct aprender's BpeTokenizer using from_vocab
         let vocab = data.vocabulary;
         let merges = data.merges;
-        
+
         let bpe = BpeTokenizer::from_vocab(vocab, merges);
 
         Ok(Self { bpe })
@@ -225,21 +229,17 @@ impl Tokenizer {
 
         let tokenizer_file = path.join("tokenizer.json");
 
-        // Serialize tokenizer data
-        // Get vocabulary and merges from aprender's BPE
-        let vocab = self.bpe.vocab().clone();  // HashMap<String, u32>
-        let merges = self.bpe.merges().to_vec();  // Vec<(String, String)>
-        
-        let data = serde_json::json!({
-            "version": "1.0.0",
-            "vocab_size": self.vocab_size(),
-            "vocabulary": vocab,
-            "merges": merges,
+        // Serialize tokenizer data using TokenizerData struct for type safety and consistency
+        // Match Python reference: only serialize vocabulary and merges
+        // No version or vocab_size fields (vocab_size is derivable from vocabulary)
+        let data = TokenizerData {
+            vocabulary: self.bpe.vocab().clone(),
+            merges: self.bpe.merges().to_vec(),
             // Special tokens are included in the vocabulary, no need to serialize separately
-        });
+        };
 
-        let content =
-            serde_json::to_string_pretty(&data).context("Failed to serialize tokenizer")?;
+        // Use compact JSON (not pretty-printed) to reduce file size
+        let content = serde_json::to_string(&data).context("Failed to serialize tokenizer")?;
 
         fs::write(&tokenizer_file, content).with_context(|| {
             format!(
@@ -258,10 +258,11 @@ mod tests {
 
     #[test]
     fn test_tokenizer_train_and_encode() {
-        let corpus = vec!["hello world", "hello rust"];
-        let tokenizer = Tokenizer::train_from_iterator(corpus.iter(), 500).unwrap();
+        let corpus = ["hello world", "hello rust"];
+        let tokenizer =
+            Tokenizer::train_from_iterator(corpus.iter(), 500).expect("Failed to train tokenizer");
 
-        let ids = tokenizer.encode("hello").unwrap();
+        let ids = tokenizer.encode("hello").expect("Encoding failed");
         assert!(!ids.is_empty());
     }
 }

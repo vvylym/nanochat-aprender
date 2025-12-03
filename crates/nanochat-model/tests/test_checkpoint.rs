@@ -9,7 +9,7 @@ fn test_checkpoint_save() {
     // Test saving model checkpoint to disk
     let config = GPTConfig::default();
     let model = GPT::new(config);
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new().expect("Failed to create temporary directory");
     let checkpoint_path = temp_dir.path().join("model");
 
     let result = save_checkpoint(&model, &checkpoint_path, None);
@@ -25,14 +25,15 @@ fn test_checkpoint_load() {
     // Test loading model checkpoint from disk
     let config = GPTConfig::default();
     let model = GPT::new(config);
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new().expect("Failed to create temporary directory");
     let checkpoint_path = temp_dir.path().join("model");
 
     // Save checkpoint
-    save_checkpoint(&model, &checkpoint_path, None).unwrap();
+    save_checkpoint(&model, &checkpoint_path, None).expect("Failed to save checkpoint");
 
     // Load checkpoint
-    let (loaded_model, metadata) = load_checkpoint(&checkpoint_path).unwrap();
+    let (loaded_model, metadata) =
+        load_checkpoint(&checkpoint_path).expect("Failed to load checkpoint");
 
     // Verify config matches
     assert_eq!(loaded_model.config(), model.config());
@@ -46,7 +47,7 @@ fn test_checkpoint_roundtrip() {
     // Test save -> load roundtrip produces identical model
     let config = GPTConfig::default();
     let model = GPT::new(config);
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new().expect("Failed to create temporary directory");
     let checkpoint_path = temp_dir.path().join("model");
 
     let metadata = CheckpointMetadata {
@@ -57,10 +58,12 @@ fn test_checkpoint_roundtrip() {
     };
 
     // Save
-    save_checkpoint(&model, &checkpoint_path, Some(metadata.clone())).unwrap();
+    save_checkpoint(&model, &checkpoint_path, Some(metadata.clone()))
+        .expect("Failed to save checkpoint");
 
     // Load
-    let (loaded_model, loaded_metadata) = load_checkpoint(&checkpoint_path).unwrap();
+    let (loaded_model, loaded_metadata) =
+        load_checkpoint(&checkpoint_path).expect("Failed to load checkpoint");
 
     // Verify config matches
     assert_eq!(loaded_model.config(), model.config());
@@ -76,11 +79,11 @@ fn test_checkpoint_integrity_validation() {
     // Test checkpoint version validation
     let config = GPTConfig::default();
     let model = GPT::new(config);
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new().expect("Failed to create temporary directory");
     let checkpoint_path = temp_dir.path().join("model");
 
     // Save checkpoint
-    save_checkpoint(&model, &checkpoint_path, None).unwrap();
+    save_checkpoint(&model, &checkpoint_path, None).expect("Failed to save checkpoint");
 
     // Load should succeed with correct version
     let result = load_checkpoint(&checkpoint_path);
@@ -92,7 +95,7 @@ fn test_checkpoint_metadata() {
     // Test that checkpoint includes config and metadata
     let config = GPTConfig::default();
     let model = GPT::new(config);
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new().expect("Failed to create temporary directory");
     let checkpoint_path = temp_dir.path().join("model");
 
     let metadata = CheckpointMetadata {
@@ -109,8 +112,10 @@ fn test_checkpoint_metadata() {
         },
     };
 
-    save_checkpoint(&model, &checkpoint_path, Some(metadata.clone())).unwrap();
-    let (_, loaded_metadata) = load_checkpoint(&checkpoint_path).unwrap();
+    save_checkpoint(&model, &checkpoint_path, Some(metadata.clone()))
+        .expect("Failed to save checkpoint");
+    let (_, loaded_metadata) =
+        load_checkpoint(&checkpoint_path).expect("Failed to load checkpoint");
 
     assert_eq!(loaded_metadata.step, metadata.step);
     assert_eq!(loaded_metadata.loss, metadata.loss);
@@ -121,7 +126,7 @@ fn test_checkpoint_metadata() {
 #[test]
 fn test_checkpoint_corrupted_file() {
     // Test error handling for missing checkpoint files
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new().expect("Failed to create temporary directory");
     let checkpoint_path = temp_dir.path().join("nonexistent");
 
     // Loading non-existent checkpoint should fail

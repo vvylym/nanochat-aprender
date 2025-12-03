@@ -8,8 +8,8 @@ proptest! {
     fn test_encode_decode_roundtrip_ascii(text in "[ -~]{1,100}") {
         let tokenizer = create_test_tokenizer();
 
-        let ids = tokenizer.encode(&text).unwrap();
-        let decoded = tokenizer.decode(&ids).unwrap();
+        let ids = tokenizer.encode(&text).expect("Failed to encode to token IDs");
+        let decoded = tokenizer.decode(&ids).expect("Failed to decode to text string");
 
         // ASCII text should round-trip (may have whitespace normalization)
         // Just verify it doesn't panic and produces some output
@@ -20,11 +20,11 @@ proptest! {
     fn test_encode_decode_roundtrip_unicode(text in "\\p{Any}{1,50}") {
         let tokenizer = create_test_tokenizer();
 
-        let ids = tokenizer.encode(&text).unwrap();
+        let ids = tokenizer.encode(&text).expect("Failed to encode to token IDs");
 
         // Only test if encoding succeeded and produced tokens
         if !ids.is_empty() {
-            let _decoded = tokenizer.decode(&ids).unwrap();
+            let _decoded = tokenizer.decode(&ids).expect("Failed to decode to text string");
 
             // Unicode text may not round-trip perfectly due to byte-level encoding
             // But encoding should produce some tokens and decoding should produce some text
@@ -61,7 +61,7 @@ proptest! {
 
         if !valid_ids.is_empty() {
             // Decode should handle any ID in vocabulary range
-            let decoded = tokenizer.decode(&valid_ids).unwrap();
+            let decoded = tokenizer.decode(&valid_ids).expect("Failed to decode to text string");
             // Decoded should be a valid string (may be empty or contain special tokens)
             prop_assert!(decoded.chars().all(|c| c.is_ascii() || !c.is_control()));
         }
@@ -71,7 +71,7 @@ proptest! {
 // Helper function
 fn create_test_tokenizer() -> Tokenizer {
     // Create a small tokenizer for testing
-    let corpus = vec![
+    let corpus = [
         "hello world",
         "hello rust",
         "world peace",

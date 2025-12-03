@@ -1,6 +1,7 @@
 # CLI API Contract for Nanochat Training Commands
 # Version: 1.0.0
-# Date: 2025-01-27
+# Date: 2025-12-01
+# Last Updated: 2025-12-03
 #
 # Overview:
 #   This document defines the CLI interface contracts for nanochat training,
@@ -18,8 +19,7 @@ Pretraining stage for base language modeling.
 - `--config <PATH>` - Path to training configuration file (required)
 - `--data-dir <PATH>` - Directory containing training data shards (required)
 - `--output-dir <PATH>` - Directory for checkpoints and outputs (required)
-- `--resume <PATH>` - Path to checkpoint to resume from (optional)
-- `--device <DEVICE>` - Device to use: `cpu`, `gpu`, or `auto` (default: `auto`)
+- `--resume <PATH>` - Path to checkpoint to resume from (optional, SafeTensors format)
 - `--workers <N>` - Number of data loading workers (default: 4)
 - `--log-interval <N>` - Steps between logging metrics (default: 100)
 - `--checkpoint-interval <N>` - Steps between checkpoint saves (default: 1000)
@@ -34,9 +34,11 @@ Pretraining stage for base language modeling.
 - `4` - Checkpoint error
 
 **Output**:
-- Checkpoints saved to `{output-dir}/checkpoints/step_{N}.apr`
+- Checkpoints saved to `{output-dir}/checkpoints/step_{N}.safetensors` (SafeTensors format for weights, JSON for metadata)
 - Training metrics logged to console (or wandb if configured)
-- Final checkpoint at `{output-dir}/checkpoints/final.apr`
+- Final checkpoint at `{output-dir}/checkpoints/final.safetensors`
+
+**Note**: Device selection is compile-time via `gpu` feature flag. Build with `--features gpu` for GPU support, or without for CPU-only.
 
 ### nanochat midtrain
 
@@ -46,11 +48,10 @@ Mid-training stage for conversational fine-tuning.
 
 **Options**:
 - `--config <PATH>` - Path to training configuration file (required)
-- `--base-model <PATH>` - Path to pretrained base model checkpoint (required)
+- `--base-model <PATH>` - Path to pretrained base model checkpoint (required, SafeTensors format)
 - `--data-dir <PATH>` - Directory containing conversational training data (required)
 - `--output-dir <PATH>` - Directory for checkpoints and outputs (required)
-- `--resume <PATH>` - Path to checkpoint to resume from (optional)
-- `--device <DEVICE>` - Device to use: `cpu`, `gpu`, or `auto` (default: `auto`)
+- `--resume <PATH>` - Path to checkpoint to resume from (optional, SafeTensors format)
 - `--workers <N>` - Number of data loading workers (default: 4)
 - `--log-interval <N>` - Steps between logging metrics (default: 100)
 - `--checkpoint-interval <N>` - Steps between checkpoint saves (default: 1000)
@@ -69,11 +70,10 @@ Supervised fine-tuning stage for instruction following.
 
 **Options**:
 - `--config <PATH>` - Path to training configuration file (required)
-- `--base-model <PATH>` - Path to mid-trained model checkpoint (required)
+- `--base-model <PATH>` - Path to mid-trained model checkpoint (required, SafeTensors format)
 - `--data-dir <PATH>` - Directory containing instruction-following data (required)
 - `--output-dir <PATH>` - Directory for checkpoints and outputs (required)
-- `--resume <PATH>` - Path to checkpoint to resume from (optional)
-- `--device <DEVICE>` - Device to use: `cpu`, `gpu`, or `auto` (default: `auto`)
+- `--resume <PATH>` - Path to checkpoint to resume from (optional, SafeTensors format)
 - `--workers <N>` - Number of data loading workers (default: 4)
 - `--log-interval <N>` - Steps between logging metrics (default: 100)
 - `--checkpoint-interval <N>` - Steps between checkpoint saves (default: 1000)
@@ -91,10 +91,9 @@ Evaluate model on standard benchmarks.
 **Usage**: `nanochat eval [OPTIONS]`
 
 **Options**:
-- `--model <PATH>` - Path to model checkpoint to evaluate (required)
+- `--model <PATH>` - Path to model checkpoint to evaluate (required, SafeTensors format)
 - `--benchmarks <LIST>` - Comma-separated list of benchmarks: `core,arc,gsm8k,humaneval,mmlu,chatcore,all` (default: `all`)
 - `--output-dir <PATH>` - Directory for evaluation results (required)
-- `--device <DEVICE>` - Device to use: `cpu`, `gpu`, or `auto` (default: `auto`)
 - `--batch-size <N>` - Batch size for evaluation (default: 32)
 - `--quiet` - Suppress progress output (default: false)
 
@@ -118,13 +117,12 @@ Run inference from command line.
 - `PROMPT` - Text prompt for generation (required if not provided via stdin)
 
 **Options**:
-- `--model <PATH>` - Path to model checkpoint (required)
+- `--model <PATH>` - Path to model checkpoint (required, SafeTensors format)
 - `--temperature <FLOAT>` - Sampling temperature (default: 0.8, range: 0.0-2.0)
 - `--top-k <INT>` - Top-k sampling (default: 50, range: 1-200)
 - `--top-p <FLOAT>` - Nucleus sampling (default: 0.9, range: 0.0-1.0)
 - `--max-tokens <INT>` - Maximum tokens to generate (default: 256, range: 1-4096)
 - `--seed <INT>` - Random seed for reproducibility (optional)
-- `--device <DEVICE>` - Device to use: `cpu`, `gpu`, or `auto` (default: `auto`)
 - `--stream` - Enable streaming output (default: true)
 - `--no-progress` - Disable progress bars (default: false)
 
@@ -195,7 +193,9 @@ Generating: [████████░░░░░░░░░░] 50% (128/25
 All commands provide clear error messages:
 
 - Configuration errors: "Invalid configuration: {reason}"
-- Model loading errors: "Failed to load model from {path}: {error}"
+- Model loading errors: "Failed to load model from {path}: {error}" (SafeTensors format validation errors included)
 - Training errors: "Training failed at step {N}: {error}"
 - Data errors: "Failed to load data from {path}: {error}"
+
+**Device Selection Note**: Unlike PyTorch, aprender uses compile-time feature flags for device selection. Build with `cargo build --release --features gpu` for GPU support, or `cargo build --release` for CPU-only. There is no runtime `--device` option.
 

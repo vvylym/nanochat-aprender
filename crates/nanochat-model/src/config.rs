@@ -197,7 +197,8 @@ mod tests {
 
     #[test]
     fn test_config_validation_success() {
-        let config = GPTConfig::new(1024, 50304, 12, 6, 6, 768, Some(0.0), None).unwrap();
+        let config = GPTConfig::new(1024, 50304, 12, 6, 6, 768, Some(0.0), None)
+            .expect("Failed to create config");
         assert_eq!(config.head_dim(), 128);
     }
 
@@ -215,8 +216,10 @@ mod tests {
 
     #[test]
     fn test_config_with_seed() {
-        let config1 = GPTConfig::new(1024, 50304, 12, 6, 6, 768, Some(0.0), Some(42)).unwrap();
-        let config2 = GPTConfig::new(1024, 50304, 12, 6, 6, 768, Some(0.0), Some(42)).unwrap();
+        let config1 = GPTConfig::new(1024, 50304, 12, 6, 6, 768, Some(0.0), Some(42))
+            .expect("Failed to create config");
+        let config2 = GPTConfig::new(1024, 50304, 12, 6, 6, 768, Some(0.0), Some(42))
+            .expect("Failed to create config");
 
         assert_eq!(config1.seed, Some(42));
         assert_eq!(config2.seed, Some(42));
@@ -228,8 +231,8 @@ mod tests {
         let config = GPTConfig::default();
         assert_eq!(config.seed, None);
 
-        let config_with_seed =
-            GPTConfig::new(1024, 50304, 12, 6, 6, 768, Some(0.0), Some(123)).unwrap();
+        let config_with_seed = GPTConfig::new(1024, 50304, 12, 6, 6, 768, Some(0.0), Some(123))
+            .expect("Failed to create config");
         assert_eq!(config_with_seed.seed, Some(123));
     }
 }

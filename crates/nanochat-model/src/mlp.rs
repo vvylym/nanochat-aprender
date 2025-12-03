@@ -25,11 +25,26 @@ impl MLP {
     ///
     /// # Arguments
     /// * `n_embd` - Embedding dimension
-    pub fn new(n_embd: usize) -> Self {
-        // Create linear layers without bias
-        // Note: aprender's Linear may have bias by default, we'll need to check
-        let c_fc = Linear::new(n_embd, 4 * n_embd);
-        let c_proj = Linear::new(4 * n_embd, n_embd);
+    /// * `seed` - Optional random seed for reproducibility
+    pub fn new(n_embd: usize, seed: Option<u64>) -> Self {
+        // Initialize Linear layers with Python's initialization scheme
+        use crate::init::init_linear_weight;
+
+        // Create linear layers without bias, then replace weights
+        let mut c_fc = Linear::without_bias(n_embd, 4 * n_embd);
+        let mut c_proj = Linear::without_bias(4 * n_embd, n_embd);
+
+        // Replace weights with Python's initialization scheme
+        // Copy data from new weight tensor into existing weight
+        if let Some(weight) = c_fc.parameters_mut().first_mut() {
+            let new_weight = init_linear_weight(n_embd, 4 * n_embd, seed).requires_grad();
+            weight.data_mut().copy_from_slice(new_weight.data());
+        }
+        if let Some(weight) = c_proj.parameters_mut().first_mut() {
+            let new_weight = init_linear_weight(4 * n_embd, n_embd, seed).requires_grad();
+            weight.data_mut().copy_from_slice(new_weight.data());
+        }
+
         let relu = ReLU::new();
 
         Self { c_fc, c_proj, relu }
@@ -56,6 +71,16 @@ impl MLP {
         let output = self.c_proj.forward(&x);
 
         Ok(output)
+    }
+
+    /// Zero out the output projection weights (for Python-compatible initialization)
+    pub fn zero_out_proj(&mut self) {
+        if let Some(weight) = self.c_proj.parameters_mut().first_mut() {
+            let shape = weight.shape();
+            let numel: usize = shape.iter().product();
+            let zeros_data = vec![0.0; numel];
+            weight.data_mut().copy_from_slice(&zeros_data);
+        }
     }
 }
 
@@ -85,11 +110,11 @@ mod tests {
 
     #[test]
     fn test_mlp_creation() {
-        let mlp = MLP::new(768);
+        let mlp = MLP::new(768, None);
 
         // Verify MLP has expansion and projection layers
         let params = mlp.parameters();
-        assert!(params.len() > 0);
+        assert!(!params.is_empty());
         // Each Linear layer has at least weight, may have bias
         // So we expect at least 2 parameters (one per layer)
         assert!(params.len() >= 2);
@@ -97,10 +122,10 @@ mod tests {
 
     #[test]
     fn test_mlp_forward() {
-        let mlp = MLP::new(768);
+        let mlp = MLP::new(768, None);
         let x = Tensor::ones(&[1, 10, 768]);
 
-        let output = mlp.forward(&x).unwrap();
+        let output = mlp.forward(&x).expect("MLP forward pass failed");
 
         // Output should have same batch and seq_len, but n_embd dimension
         assert_eq!(output.shape()[0], 1);
@@ -111,10 +136,10 @@ mod tests {
     #[test]
     fn test_mlp_relu_squared() {
         // Test that negative values become zero after ReLU²
-        let mlp = MLP::new(4);
+        let mlp = MLP::new(4, None);
         let x = Tensor::new(&[-1.0, 0.0, 1.0, 2.0], &[1, 1, 4]);
 
-        let output = mlp.forward(&x).unwrap();
+        let output = mlp.forward(&x).expect("MLP forward pass failed");
 
         // Output should not contain NaN or Inf
         let output_data = output.data();

@@ -403,11 +403,39 @@ impl CausalSelfAttention {
             None
         };
 
+        // Initialize Linear layers with Python's initialization scheme
+        use crate::init::init_linear_weight;
+
+        // Create Linear layers without bias, then replace weights with Python's scheme
+        let mut q_proj = Linear::without_bias(n_embd, n_embd);
+        let mut k_proj = Linear::without_bias(n_embd, kv_dim);
+        let mut v_proj = Linear::without_bias(n_embd, kv_dim);
+        let mut out_proj = Linear::without_bias(n_embd, n_embd);
+
+        // Replace weights with Python's initialization scheme
+        // Copy data from new weight tensor into existing weight
+        if let Some(weight) = q_proj.parameters_mut().first_mut() {
+            let new_weight = init_linear_weight(n_embd, n_embd, seed).requires_grad();
+            weight.data_mut().copy_from_slice(new_weight.data());
+        }
+        if let Some(weight) = k_proj.parameters_mut().first_mut() {
+            let new_weight = init_linear_weight(n_embd, kv_dim, seed).requires_grad();
+            weight.data_mut().copy_from_slice(new_weight.data());
+        }
+        if let Some(weight) = v_proj.parameters_mut().first_mut() {
+            let new_weight = init_linear_weight(n_embd, kv_dim, seed).requires_grad();
+            weight.data_mut().copy_from_slice(new_weight.data());
+        }
+        if let Some(weight) = out_proj.parameters_mut().first_mut() {
+            let new_weight = init_linear_weight(n_embd, n_embd, seed).requires_grad();
+            weight.data_mut().copy_from_slice(new_weight.data());
+        }
+
         Self {
-            q_proj: Linear::new(n_embd, n_embd),
-            k_proj: Linear::new(n_embd, kv_dim),
-            v_proj: Linear::new(n_embd, kv_dim),
-            out_proj: Linear::new(n_embd, n_embd),
+            q_proj,
+            k_proj,
+            v_proj,
+            out_proj,
             n_head,
             n_kv_head,
             head_dim,
@@ -426,6 +454,16 @@ impl CausalSelfAttention {
             } else {
                 dropout.eval();
             }
+        }
+    }
+
+    /// Zero out the output projection weights (for Python-compatible initialization)
+    pub fn zero_out_proj(&mut self) {
+        if let Some(weight) = self.out_proj.parameters_mut().first_mut() {
+            let shape = weight.shape();
+            let numel: usize = shape.iter().product();
+            let zeros_data = vec![0.0; numel];
+            weight.data_mut().copy_from_slice(&zeros_data);
         }
     }
 
@@ -695,7 +733,7 @@ mod tests {
         let q = Tensor::ones(&[1, 2, 3, 4]);
         let k = Tensor::ones(&[1, 2, 3, 4]);
 
-        let (q_norm, k_norm) = apply_qk_norm(&q, &k).unwrap();
+        let (q_norm, k_norm) = apply_qk_norm(&q, &k).expect("QK norm failed");
 
         assert_eq!(q_norm.shape(), q.shape());
         assert_eq!(k_norm.shape(), k.shape());
@@ -707,7 +745,7 @@ mod tests {
         let q = Tensor::ones(&[1, 4, 3, 4]); // 4 query heads
         let k = Tensor::ones(&[1, 2, 3, 4]); // 2 key/value heads
 
-        let (q_norm, k_norm) = apply_qk_norm(&q, &k).unwrap();
+        let (q_norm, k_norm) = apply_qk_norm(&q, &k).expect("QK norm failed");
 
         assert_eq!(q_norm.shape(), q.shape());
         assert_eq!(k_norm.shape(), k.shape());
@@ -719,6 +757,38 @@ mod tests {
         assert_eq!(attn.n_head(), 6);
         assert_eq!(attn.n_kv_head(), 6);
         assert_eq!(attn.head_dim(), 128);
+    }
+
+    #[test]
+    fn test_attention_weight_initialization() {
+        // Test that attention weights use Python's initialization scheme
+        let n_embd = 768;
+        let n_head = 6;
+        let n_kv_head = 6;
+        let seed = Some(42);
+
+        let attn = CausalSelfAttention::new(n_embd, n_head, n_kv_head, None, seed);
+
+        // Check q_proj weight
+        let q_weight = attn.parameters()[0]; // First parameter is q_proj weight
+        let q_data = q_weight.data();
+
+        // Calculate std
+        let mean: f32 = q_data.iter().sum::<f32>() / q_data.len() as f32;
+        let variance: f32 =
+            q_data.iter().map(|&x| (x - mean).powi(2)).sum::<f32>() / q_data.len() as f32;
+        let actual_std = variance.sqrt();
+
+        // Expected std from Python formula
+        let fan_in = n_embd as f32;
+        let fan_out = n_embd as f32;
+        let expected_std = (1.0 / fan_in.sqrt()) * (1.0_f32.min((fan_out / fan_in).sqrt()));
+
+        // Allow 20% tolerance for statistical variation
+        assert!(
+            (actual_std - expected_std).abs() < expected_std * 0.2,
+            "Attention weight std {actual_std} too far from expected {expected_std}"
+        );
     }
 
     #[test]

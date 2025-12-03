@@ -149,7 +149,8 @@ mod tests {
 
     #[test]
     fn test_rope_precompute() {
-        let (cos, sin) = precompute_rotary_embeddings(10, 64, 10000.0).unwrap();
+        let (cos, sin) =
+            precompute_rotary_embeddings(10, 64, 10000.0).expect("Failed to precompute RoPE");
 
         assert_eq!(cos.shape(), &[1, 10, 1, 32]);
         assert_eq!(sin.shape(), &[1, 10, 1, 32]);
@@ -165,9 +166,10 @@ mod tests {
     fn test_rope_apply() {
         // Create input tensor [batch=1, n_heads=2, seq_len=3, head_dim=4]
         let x = Tensor::ones(&[1, 2, 3, 4]);
-        let (cos, sin) = precompute_rotary_embeddings(3, 4, 10000.0).unwrap();
+        let (cos, sin) =
+            precompute_rotary_embeddings(3, 4, 10000.0).expect("Failed to precompute RoPE");
 
-        let result = apply_rotary_emb(&x, &cos, &sin).unwrap();
+        let result = apply_rotary_emb(&x, &cos, &sin).expect("RoPE application failed");
 
         assert_eq!(result.shape(), x.shape());
     }

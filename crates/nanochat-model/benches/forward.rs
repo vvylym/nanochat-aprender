@@ -6,7 +6,7 @@ use nanochat_model::{GPTConfig, GPT};
 
 fn bench_forward_pass(c: &mut Criterion) {
     let config = GPTConfig::default();
-    let mut model = GPT::new(config);
+    let model = GPT::new(config);
 
     let mut group = c.benchmark_group("forward_pass");
 
@@ -18,7 +18,9 @@ fn bench_forward_pass(c: &mut Criterion) {
             &input,
             |b, input| {
                 b.iter(|| {
-                    let _ = black_box(model.forward_cache(black_box(input), None).unwrap());
+                    let _ = black_box(
+                        model.forward_cache(black_box(input), None).expect("Forward pass failed"),
+                    );
                 });
             },
         );
@@ -29,7 +31,7 @@ fn bench_forward_pass(c: &mut Criterion) {
 
 fn bench_forward_with_kv_cache(c: &mut Criterion) {
     let config = GPTConfig::default();
-    let mut model = GPT::new(config);
+    let model = GPT::new(config);
 
     let mut group = c.benchmark_group("forward_with_kv_cache");
 
@@ -41,7 +43,9 @@ fn bench_forward_with_kv_cache(c: &mut Criterion) {
     group.bench_function("single_token_with_cache", |b| {
         b.iter(|| {
             let _ = black_box(
-                model.forward_cache(black_box(&input), Some(black_box(&mut kv_cache))).unwrap(),
+                model
+                    .forward_cache(black_box(&input), Some(black_box(&mut kv_cache)))
+                    .expect("Forward pass failed"),
             );
         });
     });
