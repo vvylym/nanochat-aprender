@@ -159,26 +159,26 @@
 
 ### Tests for Pretraining (Write First)
 
-- [ ] T054 [P] [US3] Create unit test for data loading in `crates/nanochat-pretrain/tests/test_dataloader.rs`
-- [ ] T055 [P] [US3] Create unit test for optimizer configuration in `crates/nanochat-pretrain/tests/test_optimizer.rs`
-- [ ] T056 [P] [US3] Create integration test for training loop in `crates/nanochat-pretrain/tests/test_train.rs`
+- [X] T054 [P] [US3] Create unit test for data loading in `crates/nanochat-pretrain/tests/test_dataloader.rs`
+- [X] T055 [P] [US3] Create unit test for optimizer configuration in `crates/nanochat-pretrain/tests/test_optimizer.rs`
+- [X] T056 [P] [US3] Create integration test for training loop in `crates/nanochat-pretrain/tests/test_train.rs`
 
 ### Implementation for Pretraining
 
-- [ ] T057 [US3] Create `crates/nanochat-pretrain/src/main.rs` with CLI entry point using clap
-- [ ] T058 [US3] Implement command-line argument parsing in `crates/nanochat-pretrain/src/main.rs` (config, data-dir, output-dir, resume, workers, etc.) - Note: No `--device` option (device selection is compile-time via `gpu` feature flag per plan.md)
-- [ ] T059 [US3] Implement `DataLoader` in `crates/nanochat-pretrain/src/dataloader.rs` with shuffling, batching, and tokenization
-- [ ] T060 [US3] Implement data sharding support in `crates/nanochat-pretrain/src/dataloader.rs` for large datasets
-- [ ] T061 [US3] Implement gradient accumulation logic in `crates/nanochat-pretrain/src/train.rs` for effective larger batch sizes
-- [ ] T062 [US3] Implement AdamW optimizer integration in `crates/nanochat-pretrain/src/optimizer.rs` using `aprender::nn::optim::AdamW` with configurable hyperparameters (per Principle VII, FR-017, FR-086) - Note: This implements the `setup_optimizers()` functionality from Python reference, configuring separate optimizers for different parameter groups (embedding, LM head, matrix params) using model's `parameters()` and `parameters_mut()` methods
-- [ ] T063 [US3] Implement learning rate scheduling in `crates/nanochat-pretrain/src/optimizer.rs` using `aprender::nn::scheduler::WarmupCosineScheduler` (per Principle VII, FR-024, FR-086)
-- [ ] T064 [US3] Implement training loop in `crates/nanochat-pretrain/src/train.rs` with forward pass (using model's `forward_training()` with `aprender::nn::loss::CrossEntropyLoss` per FR-087, FR-086), backward pass, and optimizer step
-- [ ] T065 [US3] Implement checkpoint saving at intervals in `crates/nanochat-pretrain/src/train.rs` using model's checkpoint functionality (SafeTensors format per FR-045, FR-046)
-- [ ] T066 [US3] Implement checkpoint resumption in `crates/nanochat-pretrain/src/train.rs` to resume from saved checkpoints (SafeTensors format per FR-020, FR-046)
-- [ ] T067 [US3] Implement training metrics logging in `crates/nanochat-pretrain/src/metrics.rs` (loss, learning rate, throughput) per FR-025
-- [ ] T068 [US3] Add comprehensive documentation for CLI interface and training process in `crates/nanochat-pretrain/src/main.rs`
-- [ ] T069 [US3] Add error handling for training failures and checkpoint errors in `crates/nanochat-pretrain/src/train.rs`
-- [ ] T069.1 [US3] [P] Run quality gates before marking pretraining complete: `cargo fmt --all`, `cargo clippy --workspace --all-features --all-targets`, `cargo test --workspace --all-features` (per FR-088)
+- [X] T057 [US3] Create `crates/nanochat-pretrain/src/main.rs` with CLI entry point using clap
+- [X] T058 [US3] Implement command-line argument parsing in `crates/nanochat-pretrain/src/main.rs` (config, data-dir, output-dir, resume, workers, etc.) - Note: No `--device` option (device selection is compile-time via `gpu` feature flag per plan.md)
+- [X] T059 [US3] Implement `DataLoader` in `crates/nanochat-pretrain/src/dataloader.rs` with shuffling, batching, and tokenization
+- [X] T060 [US3] Implement data sharding support in `crates/nanochat-pretrain/src/dataloader.rs` for large datasets
+- [X] T061 [US3] Implement gradient accumulation logic in `crates/nanochat-pretrain/src/train.rs` for effective larger batch sizes
+- [X] T062 [US3] Implement AdamW optimizer integration in `crates/nanochat-pretrain/src/optimizer.rs` using `aprender::nn::optim::AdamW` with configurable hyperparameters (per Principle VII, FR-017, FR-086) - Note: This implements the `setup_optimizers()` functionality from Python reference, using model's `parameters_mut()` method to get mutable parameter references for optimizer
+- [X] T063 [US3] Implement learning rate scheduling in `crates/nanochat-pretrain/src/optimizer.rs` using `aprender::nn::scheduler::WarmupCosineScheduler` (per Principle VII, FR-024, FR-086)
+- [X] T064 [US3] Implement training loop in `crates/nanochat-pretrain/src/train.rs` with forward pass (using model's `forward_training()` with `aprender::nn::loss::CrossEntropyLoss` per FR-087, FR-086), backward pass (using `loss.backward()`), and optimizer step (using `optimizer.step()` and `optimizer.zero_grad()`)
+- [X] T065 [US3] Implement checkpoint saving at intervals in `crates/nanochat-pretrain/src/train.rs` using model's checkpoint functionality (SafeTensors format per FR-045, FR-046)
+- [X] T066 [US3] Implement checkpoint resumption in `crates/nanochat-pretrain/src/train.rs` to resume from saved checkpoints (SafeTensors format per FR-020, FR-046)
+- [X] T067 [US3] Implement training metrics logging in `crates/nanochat-pretrain/src/metrics.rs` (loss, learning rate, throughput) per FR-025
+- [X] T068 [US3] Add comprehensive documentation for CLI interface and training process in `crates/nanochat-pretrain/src/main.rs`
+- [X] T069 [US3] Add error handling for training failures and checkpoint errors in `crates/nanochat-pretrain/src/train.rs`
+- [X] T069.1 [US3] [P] Run quality gates before marking pretraining complete: `cargo fmt --all`, `cargo clippy --workspace --all-features --all-targets`, `cargo test --workspace --all-features` (per FR-088)
 
 **Checkpoint**: Pretraining crate complete, can train base model and save checkpoints
 

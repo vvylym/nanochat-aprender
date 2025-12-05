@@ -1,24 +1,24 @@
 <!--
 Sync Impact Report:
-Version: 1.1.0 → 1.2.0 (Added mandatory quality gates and test error handling requirements)
+Version: 1.2.0 → 1.3.0 (Added task completion verification requirements to prevent premature task completion)
 Principles Added:
   - None
 Principles Modified:
   - None
 Sections Added:
-  - None
+  - Task Completion Verification (in Development Workflow)
 Sections Modified:
-  - Development Workflow (added mandatory quality gates: formatting, linting, testing commands)
-  - Development Workflow (added error handling requirements for tests: prohibit unwrap(), require expect())
+  - Development Workflow (added task completion verification: checklist requirement, TODO/placeholder checks, reference alignment)
 Templates Updated:
-  - ✅ .specify/templates/plan-template.md (No changes needed - quality gates are workflow-level)
-  - ⚠ .specify/templates/spec-template.md (No changes needed - technology agnostic)
-  - ✅ .specify/templates/tasks-template.md (Updated with quality gate verification section)
-  - ⚠ .specify/templates/checklist-template.md (No changes needed - dynamically generated)
+  - ✅ .specify/templates/tasks-template.md (Already has quality gates section - no changes needed)
+  - ⚠ .specify/templates/plan-template.md (May need task completion process section - review recommended)
+  - ⚠ .specify/templates/spec-template.md (May need quality assurance section - review recommended)
+  - ✅ .specify/templates/task-completion-checklist.md (Created as new template artifact)
 Critical Issues Addressed:
-  - MANDATORY: All tasks must pass formatting, linting, and testing before completion
-  - MANDATORY: Tests must use .expect() instead of .unwrap() for better error messages
-  - Based on remediation plan requirements for consistent quality standards
+  - MANDATORY: Task completion checklist must be completed before marking tasks complete
+  - MANDATORY: No TODOs/placeholders allowed in completed tasks
+  - MANDATORY: Reference implementation alignment verification required
+  - Prevents premature task completion that led to 18 gaps in Phase 4 implementation
 -->
 
 # Nanochat-Rust Constitution
@@ -173,6 +173,20 @@ Critical Issues Addressed:
 - **REQUIRED**: Use `.expect("descriptive error message")` instead of `.unwrap()` to enable easy debugging
 - **Rationale**: `.expect()` provides context when tests fail, making it easier to identify the root cause of failures. This applies to ALL test code, including unit tests, integration tests, and doc tests.
 
+**Task Completion Verification**:
+- **MUST**: Before marking any task as complete (`[X]`) in `tasks.md`:
+  1. **Complete Task Completion Checklist**: Fill out `.specify/templates/task-completion-checklist.md` for the task
+  2. **Verify No TODOs**: Ensure no `TODO`, `FIXME`, `XXX`, `TKTK`, or `placeholder` comments remain in implementation
+  3. **Verify Reference Alignment**: If a reference implementation exists (e.g., Python), verify all equivalent functionality is implemented
+  4. **Pass Quality Gates**: All quality gates must pass (`cargo fmt`, `cargo clippy`, `cargo test`)
+  5. **Document Exceptions**: If any checklist item cannot be completed, document the reason and create a follow-up task
+- **MUST NOT**: Mark tasks complete if:
+  - Any `TODO`, `FIXME`, `XXX`, `TKTK`, or `placeholder` comments remain
+  - Hardcoded values exist that should be configurable (unless explicitly documented as acceptable)
+  - Critical functionality from reference implementation is missing (unless differences are documented and justified)
+  - Quality gates fail
+- **Rationale**: Prevents premature task completion and ensures production-ready code. The checklist provides a systematic way to verify completeness and catch gaps before they accumulate. This requirement addresses the root cause of tasks being marked complete despite implementation gaps (e.g., 18 issues found in Phase 4).
+
 **SHOULD**: Development SHOULD:
 - Use feature flags for experimental functionality
 - Maintain backward compatibility when possible
@@ -194,4 +208,4 @@ This constitution supersedes all other development practices and guidelines. All
 - Constitution violations are blocking issues and MUST be resolved before merge
 - Regular audits SHOULD be conducted to ensure ongoing compliance
 
-**Version**: 1.2.0 | **Ratified**: 2025-12-01 | **Last Amended**: 2025-12-03
+**Version**: 1.3.0 | **Ratified**: 2025-12-01 | **Last Amended**: 2024-12-19

@@ -244,13 +244,21 @@ With multiple developers:
 
 **MANDATORY**: Before marking any task as complete, the following MUST pass:
 
-1. **Formatting**: Run `cargo fmt --all` - All code MUST be formatted
-2. **Linting**: Run `cargo clippy --workspace --all-features --all-targets` - All code MUST pass clippy with no warnings
-3. **Testing**: Run `cargo test --workspace --all-features` - All tests MUST pass
+1. **Task Completion Checklist**: Complete `.specify/templates/task-completion-checklist.md` for the task
+2. **No TODOs/Placeholders**: Ensure no `TODO`, `FIXME`, `XXX`, `TKTK`, or `placeholder` comments remain
+3. **Reference Alignment**: If a reference implementation exists, verify all equivalent functionality is implemented
+4. **Formatting**: Run `cargo fmt --all` - All code MUST be formatted
+5. **Linting**: Run `cargo clippy --workspace --all-features --all-targets` - All code MUST pass clippy with no warnings
+6. **Testing**: Run `cargo test --workspace --all-features` - All tests MUST pass
 
 **Error Handling in Tests**: 
 - **FORBIDDEN**: Use of `.unwrap()` in test code is PROHIBITED
 - **REQUIRED**: Use `.expect("descriptive error message")` instead of `.unwrap()` for better debugging
+
+**Task Completion Verification**:
+- **MUST**: Complete the task completion checklist before marking any task as `[X]`
+- **MUST NOT**: Mark tasks complete if TODOs, placeholders, or missing reference functionality remain
+- See `.specify/memory/constitution.md` Development Workflow section for complete requirements
 
 ## Notes
 

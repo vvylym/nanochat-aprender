@@ -1,0 +1,35 @@
+{
+  "model": {
+    "vocab_size": 50304,
+    "n_layer": 12,
+    "n_head": 6,
+    "n_kv_head": 6,
+    "n_embd": 768,
+    "sequence_len": 1024
+  },
+  "training": {
+    "batch_size": 32,
+    "seq_len": 256,
+    "gradient_accumulation_steps": 1,
+    "max_steps": 10000,
+    "save_interval": 1000,
+    "log_interval": 100,
+    "eval_interval": 250,
+    "eval_tokens": 10485760,
+    "grad_clip": 1.0
+  },
+  "optimizer": {
+    "learning_rate": 0.0001,
+    "weight_decay": 0.1,
+    "beta1": 0.9,
+    "beta2": 0.95,
+    "eps": 1e-8,
+    "warmup_steps": 1000,
+    "max_steps": 10000,
+    "min_lr": 1e-6,
+    "warmup_ratio": null,
+    "warmdown_ratio": 0.2,
+    "final_lr_frac": 0.0
+  }
+}
+

@@ -22,9 +22,11 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+rand = "0.8"
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
+tempfile = "3.8"
 
 [features]
 default = ["cpu-only"]

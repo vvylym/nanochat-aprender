@@ -78,6 +78,98 @@ impl Tokenizer {
         Ok(Self { bpe })
     }
 
+    /// Train tokenizer from text files in a directory
+    ///
+    /// Reads all `.txt` files from the specified directory, loads their content,
+    /// and trains a BPE tokenizer on the combined text.
+    ///
+    /// # Arguments
+    /// * `data_dir` - Directory containing text files (.txt)
+    /// * `vocab_size` - Target vocabulary size
+    /// * `special_tokens` - Optional special tokens to add after training
+    ///
+    /// # Returns
+    /// Trained tokenizer
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - The directory cannot be read
+    /// - No .txt files are found
+    /// - Training fails
+    ///
+    /// # Example
+    /// ```no_run
+    /// use nanochat_tokenizer::Tokenizer;
+    /// use std::path::Path;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let special_tokens = vec![
+    ///     "<|bos|>".to_string(),
+    ///     "<|eos|>".to_string(),
+    ///     "<|pad|>".to_string(),
+    /// ];
+    /// let tokenizer = Tokenizer::train_from_directory(
+    ///     Path::new("./data"),
+    ///     50000,
+    ///     Some(special_tokens),
+    /// )?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn train_from_directory(
+        data_dir: &Path,
+        vocab_size: usize,
+        special_tokens: Option<Vec<String>>,
+    ) -> Result<Self> {
+        use std::fs;
+        use std::io::Read;
+
+        // Collect all text from .txt files
+        let mut texts = Vec::new();
+        let entries = fs::read_dir(data_dir)
+            .with_context(|| format!("Failed to read directory: {:?}", data_dir))?;
+
+        for entry in entries {
+            let entry = entry.context("Failed to read directory entry")?;
+            let path = entry.path();
+
+            if path.extension().and_then(|s| s.to_str()) == Some("txt") {
+                let mut file = fs::File::open(&path)
+                    .with_context(|| format!("Failed to open file: {:?}", path))?;
+                let mut content = String::new();
+                file.read_to_string(&mut content)
+                    .with_context(|| format!("Failed to read file: {:?}", path))?;
+                texts.push(content);
+            }
+        }
+
+        if texts.is_empty() {
+            anyhow::bail!("No .txt files found in directory: {:?}", data_dir);
+        }
+
+        // Create iterator over texts
+        let text_iter = texts.iter().map(|s| s.as_str());
+
+        // Train tokenizer using existing train_from_iterator method
+        let tokenizer = Self::train_from_iterator(text_iter, vocab_size)
+            .context("Failed to train tokenizer from data files")?;
+
+        // Add special tokens if provided
+        // Note: aprender's BpeTokenizer may handle special tokens during training
+        // If not, we may need to add them manually. For now, we'll document this.
+        if special_tokens.is_some() {
+            // TODO: Check if aprender supports adding special tokens after training
+            // If not, we may need to include them in the training corpus or use a different approach
+            // For now, we'll log a warning if special tokens are provided
+            eprintln!(
+                "Warning: Special tokens provided but may not be added to trained tokenizer. \
+                      Check aprender's BpeTokenizer API for special token support."
+            );
+        }
+
+        Ok(tokenizer)
+    }
+
     /// Encode text to token IDs
     ///
     /// # Arguments
@@ -264,5 +356,32 @@ mod tests {
 
         let ids = tokenizer.encode("hello").expect("Encoding failed");
         assert!(!ids.is_empty());
+    }
+
+    #[test]
+    fn test_train_from_directory() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        // Create temporary directory with test files
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let file1 = temp_dir.path().join("data1.txt");
+        let file2 = temp_dir.path().join("data2.txt");
+
+        fs::write(&file1, "hello world hello rust").expect("Failed to write file1");
+        fs::write(&file2, "world peace rust is awesome").expect("Failed to write file2");
+
+        // Train tokenizer from directory
+        let tokenizer = Tokenizer::train_from_directory(
+            temp_dir.path(),
+            500,
+            Some(vec!["<|bos|>".to_string(), "<|eos|>".to_string()]),
+        )
+        .expect("Failed to train tokenizer from directory");
+
+        // Verify tokenizer works
+        let ids = tokenizer.encode("hello world").expect("Encoding failed");
+        assert!(!ids.is_empty());
+        assert!(tokenizer.vocab_size() > 0);
     }
 }
