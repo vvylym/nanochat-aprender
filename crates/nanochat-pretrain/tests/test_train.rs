@@ -110,3 +110,43 @@ fn test_validation_evaluation() {
     assert!(val_bpb.is_finite());
     assert!(val_bpb >= 0.0);
 }
+
+#[test]
+fn test_gradient_norm_computation() {
+    use nanochat_pretrain::train::clip_gradients;
+
+    let model_config = GPTConfig::default();
+    let mut model = GPT::new(model_config);
+
+    // Create dummy input and targets
+    let batch_size = 2;
+    let seq_len = 10;
+    let idx = Tensor::zeros(&[batch_size, seq_len]);
+    let targets = Tensor::zeros(&[batch_size, seq_len]);
+
+    // Forward and backward pass to generate gradients
+    let loss = train_step(&mut model, &idx, &targets).expect("Training step failed");
+    loss.backward();
+
+    // Compute gradient norm (should succeed even if clipping not implemented)
+    let grad_norm = clip_gradients(&model, 1.0).expect("Failed to compute gradient norm");
+
+    // Gradient norm should be finite and non-negative
+    assert!(grad_norm.is_finite());
+    assert!(grad_norm >= 0.0);
+}
+
+#[test]
+fn test_gradient_norm_disabled() {
+    use nanochat_pretrain::train::clip_gradients;
+
+    let model_config = GPTConfig::default();
+    let model = GPT::new(model_config);
+
+    // When max_norm <= 0, should return 0.0
+    let grad_norm = clip_gradients(&model, 0.0).expect("Failed to compute gradient norm");
+    assert_eq!(grad_norm, 0.0);
+
+    let grad_norm = clip_gradients(&model, -1.0).expect("Failed to compute gradient norm");
+    assert_eq!(grad_norm, 0.0);
+}
