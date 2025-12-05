@@ -29,3 +29,7 @@ thiserror = { workspace = true }
 [dev-dependencies]
 pretty_assertions = { workspace = true }
 
+[features]
+default = ["cpu-only"]
+cpu-only = []
+
