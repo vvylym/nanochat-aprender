@@ -376,8 +376,7 @@ fn save_checkpoint_step(
     optimizer_state_map.insert(
         "lr".to_string(),
         Value::Number(
-            serde_json::Number::from_f64(current_lr as f64)
-                .expect("LR should be a valid f64"),
+            serde_json::Number::from_f64(current_lr as f64).expect("LR should be a valid f64"),
         ),
     );
     let optimizer_state = Value::Object(optimizer_state_map);

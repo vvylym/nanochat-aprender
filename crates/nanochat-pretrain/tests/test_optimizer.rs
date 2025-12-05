@@ -94,7 +94,7 @@ fn test_parameter_groups() {
     // Matrix parameters (attention, MLP)
 
     // This test mainly verifies the model has parameters that can be optimized
-    assert!(parameters.len() > 0);
+    assert!(!parameters.is_empty());
 }
 
 #[test]
