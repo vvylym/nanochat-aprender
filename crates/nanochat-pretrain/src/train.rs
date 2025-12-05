@@ -37,17 +37,17 @@ pub struct TrainingConfig {
     pub eval_steps: usize,
 }
 
-/// Clip gradients by norm
+/// Clip gradients by global norm (matching PyTorch's `torch.nn.utils.clip_grad_norm_`)
 ///
-/// Computes the gradient norm across all model parameters and clips gradients
+/// Computes the global gradient norm across all model parameters and clips gradients
 /// if the norm exceeds the threshold. This prevents gradient explosion during training.
 ///
 /// # Arguments
-/// * `model` - The GPT model (mutable reference needed to modify gradients)
+/// * `model` - The GPT model
 /// * `max_norm` - Maximum gradient norm (0.0 = disabled)
 ///
 /// # Returns
-/// Gradient norm (before clipping)
+/// The global gradient norm (for logging/monitoring)
 ///
 /// # Python Reference
 /// Matches `base_train.py:316`:
@@ -55,35 +55,10 @@ pub struct TrainingConfig {
 /// grad_norm_tensor = torch.nn.utils.clip_grad_norm_(orig_model.parameters(), grad_clip)
 /// ```
 ///
-/// # Note
-/// This is a placeholder implementation. Gradient clipping requires access to gradient
-/// values from aprender's computation graph. The exact API for accessing gradients
-/// in aprender needs to be determined. For now, this function returns 0.0 (no clipping)
-/// and logs a warning. This should be updated once aprender's gradient access API is
-/// understood.
-/// Clip gradients by global norm (matching PyTorch's `torch.nn.utils.clip_grad_norm_`)
-///
-/// **Current Implementation**: Computes and returns the global gradient norm for monitoring.
-/// Actual gradient clipping (scaling) requires aprender API extension for setting gradients.
-///
-/// # Arguments
-/// * `model` - The GPT model
-/// * `max_norm` - Maximum gradient norm (clipping threshold)
-///
-/// # Returns
-/// The global gradient norm (for logging/monitoring)
-///
-/// # Algorithm
-/// 1. Compute global norm: sqrt(sum(grad²) for all parameters)
-/// 2. If norm > max_norm: Log warning (clipping not yet implemented)
-///
-/// # Python Reference
-/// Matches PyTorch's `torch.nn.utils.clip_grad_norm_(parameters, max_norm)`
-///
-/// # Limitations
-/// - Gradient norm computation: ✅ Implemented
-/// - Gradient clipping (scaling): ⏳ Requires aprender API for setting gradients
-///   - See: `specs/001-rust-nanochat-port/APRENDER_API_SOLUTIONS.md`
+/// # Implementation Status
+/// Currently computes gradient norm and logs a warning if threshold is exceeded.
+/// Actual gradient clipping will be enabled once `aprender::autograd::scale_grad()` API
+/// is merged into the main aprender repository. The implementation is ready in our fork.
 #[allow(dead_code)] // Used in tests
 pub fn clip_gradients(model: &GPT, max_norm: f32) -> Result<f32> {
     use aprender::autograd::get_grad;
@@ -93,17 +68,13 @@ pub fn clip_gradients(model: &GPT, max_norm: f32) -> Result<f32> {
         return Ok(0.0);
     }
 
-    // Get all model parameters
     let parameters = model.parameters();
-
-    // Compute global norm
     let mut total_norm_sq = 0.0;
     let mut param_count = 0;
 
     for param in parameters {
         if let Some(grad) = get_grad(param.id()) {
             let grad_data = grad.data();
-            // Sum of squares for this parameter's gradient
             let param_norm_sq: f32 = grad_data.iter().map(|&x| x * x).sum();
             total_norm_sq += param_norm_sq;
             param_count += 1;
@@ -112,16 +83,13 @@ pub fn clip_gradients(model: &GPT, max_norm: f32) -> Result<f32> {
 
     let total_norm = total_norm_sq.sqrt();
 
-    // Log warning if clipping would be needed
     if total_norm > max_norm {
         eprintln!(
             "Warning: Gradient norm ({:.4}) exceeds max_norm ({:.4}) for {} parameters. \
-             Clipping not yet implemented - requires aprender API for setting gradients. \
-             See: specs/001-rust-nanochat-port/APRENDER_API_SOLUTIONS.md",
+             Clipping will be enabled once aprender::autograd::scale_grad() API is merged.",
             total_norm, max_norm, param_count
         );
     }
-
     Ok(total_norm)
 }
 
@@ -264,12 +232,11 @@ pub fn train(
         // Only update optimizer after accumulation steps
         if accumulation_count >= training_config.gradient_accumulation_steps {
             // Gradient clipping (before optimizer step)
-            // Note: Currently computes norm for monitoring; actual clipping requires aprender API
+            // Currently computes norm for monitoring. Actual clipping will be enabled
+            // once aprender::autograd::scale_grad() API is merged.
             if training_config.grad_clip > 0.0 {
                 let _grad_norm = clip_gradients(&model, training_config.grad_clip)
                     .context("Failed to compute gradient norm")?;
-                // Gradient norm is computed for monitoring; actual clipping requires aprender API
-                // See: specs/001-rust-nanochat-port/APRENDER_API_SOLUTIONS.md
                 // TODO: Use grad_norm for logging when metrics system supports it
             }
 
@@ -384,12 +351,9 @@ pub fn train(
 /// * `lr` - Optional learning rate
 ///
 /// # Note
-/// Full optimizer state (moment estimates m, v) cannot be saved without aprender API support.
-/// Only step count and learning rate are saved. On resume, optimizer will restart with
-/// fresh moment estimates, which may cause a brief adjustment period.
-///
-/// See: `specs/001-rust-nanochat-port/APRENDER_API_SOLUTIONS.md` for details and
-/// proposed aprender API extensions.
+/// Currently saves step count and learning rate. Full optimizer state (moment estimates m, v)
+/// will be saved once `Optimizer::get_state()` API is merged into the main aprender repository.
+/// The implementation is ready in our fork.
 fn save_checkpoint_step(
     model: &GPT,
     optimizer: &AdamW,
@@ -402,15 +366,13 @@ fn save_checkpoint_step(
     // Create checkpoint path (without extension, save_checkpoint will add .safetensors and .json)
     let checkpoint_path = output_dir.join(format!("checkpoint_step_{}", step));
 
-    // Save optimizer state (what we can save without aprender API)
-    // Note: aprender's AdamW doesn't expose moment estimates (m, v) for serialization
-    // We save step count and LR, but full state restoration isn't possible
-    // See: specs/001-rust-nanochat-port/APRENDER_API_SOLUTIONS.md for details
+    // Save optimizer state
+    // Currently saves step count and LR. Full state (moment estimates m, v) will be saved
+    // once Optimizer::get_state() API is merged into the main aprender repository.
     let optimizer_state = serde_json::json!({
         "step": step,
         "lr": lr.unwrap_or_else(|| optimizer.lr()),
-        // TODO: Add moment estimates (m, v) when aprender exposes them via get_state() API
-        // See: specs/001-rust-nanochat-port/APRENDER_API_SOLUTIONS.md#limitation-2-optimizer-state-serialization-p6
+        // TODO: Use optimizer.get_state() to save full state (m, v) once API is merged
     });
 
     // Save dataloader state
@@ -485,16 +447,18 @@ pub fn resume_from_checkpoint(
             .unwrap_or(0)
     };
 
-    // Recreate optimizer (moment estimates will be fresh)
+    // Recreate optimizer
     let (mut optimizer, _scheduler) = setup_optimizers(model, optimizer_config.clone())
         .context("Failed to setup optimizers for resume")?;
 
     // Restore optimizer state (step count and LR) if available
+    // Full state restoration (moment estimates m, v) will be enabled once
+    // Optimizer::restore_state() API is merged into the main aprender repository.
     if let Some(opt_state_val) = metadata.extra.get("optimizer_state") {
         if let Some(lr) = opt_state_val.get("lr").and_then(|v| v.as_f64()) {
             optimizer.set_lr(lr as f32);
         }
-        // TODO: Restore moment estimates if aprender exposes them
+        // TODO: Use optimizer.restore_state() to restore full state (m, v) once API is merged
     } else if let Some(lr) = metadata.learning_rate {
         // Fallback: use LR from metadata
         optimizer.set_lr(lr);
