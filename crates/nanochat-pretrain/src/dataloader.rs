@@ -6,8 +6,21 @@ use nanochat_tokenizer::Tokenizer;
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
+
+/// DataLoader state for checkpointing
+///
+/// Stores the current position in the data stream and RNG seed
+/// to allow resuming training from the exact same point.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataLoaderState {
+    /// Current position in token stream
+    pub current_pos: usize,
+    /// RNG seed (for reproducibility)
+    pub rng_seed: u64,
+}
 
 /// DataLoader for pretraining
 ///
@@ -23,6 +36,7 @@ pub struct DataLoader {
     token_ids: Vec<u32>,
     current_pos: usize,
     rng: StdRng,
+    rng_seed: u64,
 }
 
 impl DataLoader {
@@ -46,7 +60,8 @@ impl DataLoader {
             .context("Failed to load and tokenize data")?;
 
         // Initialize RNG with a seed
-        let rng = StdRng::seed_from_u64(42);
+        let rng_seed = 42; // TODO: Make configurable or use timestamp
+        let rng = StdRng::seed_from_u64(rng_seed);
 
         Ok(Self {
             tokenizer,
@@ -56,6 +71,7 @@ impl DataLoader {
             token_ids,
             current_pos: 0,
             rng,
+            rng_seed,
         })
     }
 
@@ -166,6 +182,33 @@ impl DataLoader {
     pub fn reset(&mut self) {
         self.current_pos = 0;
         self.shuffle();
+    }
+
+    /// Get current state for checkpointing
+    ///
+    /// Returns the current position in the token stream and RNG seed
+    /// so training can be resumed from the exact same point.
+    ///
+    /// # Returns
+    /// DataLoaderState containing current position and RNG seed
+    pub fn get_state(&self) -> DataLoaderState {
+        DataLoaderState {
+            current_pos: self.current_pos,
+            rng_seed: self.rng_seed,
+        }
+    }
+
+    /// Restore state from checkpoint
+    ///
+    /// Restores the data loader to a previous state, allowing training
+    /// to resume from the exact same point in the data stream.
+    ///
+    /// # Arguments
+    /// * `state` - DataLoaderState to restore
+    pub fn restore_state(&mut self, state: DataLoaderState) {
+        self.current_pos = state.current_pos;
+        self.rng_seed = state.rng_seed;
+        self.rng = StdRng::seed_from_u64(state.rng_seed);
     }
 }
 

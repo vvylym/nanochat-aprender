@@ -86,12 +86,58 @@ fn main() -> Result<()> {
         TrainingConfigFile::default()
     };
 
-    // Load or create model
+    // Load or train tokenizer (needed for both new and resumed training)
+    let tokenizer = create_or_load_tokenizer(&args.data_dir, config_file.model.vocab_size)?;
+
+    // Create optimizer config (needed for both new and resumed training)
+    let optimizer_config = OptimizerConfig {
+        learning_rate: config_file.optimizer.learning_rate,
+        weight_decay: config_file.optimizer.weight_decay,
+        beta1: config_file.optimizer.beta1,
+        beta2: config_file.optimizer.beta2,
+        eps: config_file.optimizer.eps,
+        warmup_steps: config_file.optimizer.warmup_steps,
+        max_steps: config_file.optimizer.max_steps,
+        min_lr: config_file.optimizer.min_lr,
+        warmup_ratio: config_file.optimizer.warmup_ratio,
+        warmdown_ratio: config_file.optimizer.warmdown_ratio,
+        final_lr_frac: config_file.optimizer.final_lr_frac,
+    };
+
+    // Create training data loader (needed for both new and resumed training)
+    let mut dataloader = DataLoader::new(
+        &args.data_dir,
+        tokenizer.clone(),
+        config_file.training.batch_size,
+        config_file.training.seq_len,
+        args.workers,
+    )
+    .context("Failed to create data loader")?;
+
+    // Create or load model
     let model = if let Some(resume_path) = &args.resume {
-        // Resume from checkpoint
-        let (model, _metadata, _step) = resume_from_checkpoint(resume_path)
-            .with_context(|| format!("Failed to resume from checkpoint: {:?}", resume_path))?;
-        model
+        // Create a temporary model for loading (will be replaced by checkpoint)
+        let model_config = GPTConfig {
+            vocab_size: config_file.model.vocab_size,
+            n_layer: config_file.model.n_layer,
+            n_head: config_file.model.n_head,
+            n_kv_head: config_file.model.n_kv_head,
+            n_embd: config_file.model.n_embd,
+            sequence_len: config_file.model.sequence_len,
+            dropout: Some(0.0),
+            seed: None,
+        };
+        let mut temp_model = GPT::new(model_config);
+
+        // Resume from checkpoint - this will load model weights and restore dataloader state
+        resume_from_checkpoint(
+            resume_path,
+            optimizer_config.clone(),
+            &mut dataloader,
+            &mut temp_model,
+        )
+        .with_context(|| format!("Failed to resume from checkpoint: {:?}", resume_path))?;
+        temp_model
     } else {
         // Create new model from config
         let model_config = GPTConfig {
@@ -107,25 +153,12 @@ fn main() -> Result<()> {
         GPT::new(model_config)
     };
 
-    // Load or train tokenizer
-    let tokenizer = create_or_load_tokenizer(&args.data_dir, config_file.model.vocab_size)?;
-
     // Validate tokenizer-model compatibility
     let vocab_size = tokenizer.vocab_size();
     model
         .config()
         .validate_vocab_size(vocab_size)
         .map_err(|e| anyhow::anyhow!("Tokenizer-model incompatibility: {}", e))?;
-
-    // Create training data loader
-    let dataloader = DataLoader::new(
-        &args.data_dir,
-        tokenizer.clone(),
-        config_file.training.batch_size,
-        config_file.training.seq_len,
-        args.workers,
-    )
-    .context("Failed to create data loader")?;
 
     // Create validation data loader (if validation data exists)
     let val_data_dir = args.data_dir.join("val");
@@ -156,18 +189,6 @@ fn main() -> Result<()> {
         eval_interval: config_file.training.eval_interval,
         eval_steps: config_file.training.eval_tokens
             / (config_file.training.batch_size * config_file.training.seq_len),
-    };
-
-    // Create optimizer configuration from loaded config
-    let optimizer_config = OptimizerConfig {
-        learning_rate: config_file.optimizer.learning_rate,
-        weight_decay: config_file.optimizer.weight_decay,
-        beta1: config_file.optimizer.beta1,
-        beta2: config_file.optimizer.beta2,
-        eps: config_file.optimizer.eps,
-        warmup_steps: config_file.optimizer.warmup_steps,
-        max_steps: config_file.optimizer.max_steps,
-        min_lr: config_file.optimizer.min_lr,
     };
 
     // Run training

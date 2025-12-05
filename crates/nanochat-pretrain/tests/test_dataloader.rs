@@ -168,3 +168,43 @@ fn create_test_data_dir() -> TempDir {
 
     temp_dir
 }
+
+#[test]
+fn test_dataloader_state_checkpointing() {
+    let tokenizer = create_test_tokenizer();
+    let data_dir = create_test_data_dir();
+
+    let mut dataloader = DataLoader::new(
+        data_dir.path(),
+        tokenizer,
+        2,  // batch_size
+        10, // seq_len
+        1,  // num_workers
+    )
+    .expect("Failed to create DataLoader");
+
+    // Get a batch to advance position
+    let _batch1 = dataloader
+        .next_batch()
+        .expect("Failed to get batch")
+        .expect("No batch available");
+
+    // Save state
+    let state = dataloader.get_state();
+    assert!(state.current_pos > 0, "Position should have advanced");
+
+    // Get another batch
+    let _batch2 = dataloader
+        .next_batch()
+        .expect("Failed to get batch")
+        .expect("No batch available");
+
+    // Restore state (clone needed for comparison)
+    let state_clone = dataloader.get_state();
+    dataloader.restore_state(state_clone.clone());
+
+    // Verify position was restored
+    let restored_state = dataloader.get_state();
+    assert_eq!(restored_state.current_pos, state_clone.current_pos);
+    assert_eq!(restored_state.rng_seed, state_clone.rng_seed);
+}

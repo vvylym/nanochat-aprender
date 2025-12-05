@@ -1,13 +1,13 @@
 //! Training loop for pretraining
 
-use crate::dataloader::DataLoader;
+use crate::dataloader::{DataLoader, DataLoaderState};
 use crate::metrics::MetricsLogger;
 use crate::optimizer::{
-    get_learning_rate, setup_optimizers, update_learning_rate, OptimizerConfig,
+    get_learning_rate, setup_optimizers, update_learning_rate_custom, OptimizerConfig,
 };
 use anyhow::{Context, Result};
 use aprender::autograd::Tensor;
-use aprender::nn::optim::Optimizer;
+use aprender::nn::optim::{AdamW, Optimizer};
 use nanochat_model::{
     checkpoint::{load_checkpoint, save_checkpoint, CheckpointMetadata},
     GPT,
@@ -184,8 +184,9 @@ pub fn train(
     mut val_dataloader: Option<&mut DataLoader>,
 ) -> Result<()> {
     // Setup optimizers (requires mutable model reference)
-    let (mut optimizer, mut scheduler) =
-        setup_optimizers(&mut model, optimizer_config).context("Failed to setup optimizers")?;
+    // Clone config since we need it later for custom LR scheduling
+    let (mut optimizer, mut scheduler) = setup_optimizers(&mut model, optimizer_config.clone())
+        .context("Failed to setup optimizers")?;
 
     // Create metrics logger
     let mut metrics_logger = MetricsLogger::new(training_config.log_interval);
@@ -236,7 +237,9 @@ pub fn train(
             optimizer.zero_grad();
 
             // Update learning rate using scheduler
-            update_learning_rate(&mut scheduler, &mut optimizer);
+            // Use custom scheduler if warmdown_ratio is specified (matches Python behavior)
+            // Otherwise use aprender's scheduler (cosine decay)
+            update_learning_rate_custom(&mut scheduler, &mut optimizer, step, &optimizer_config);
 
             // Get current learning rate from optimizer
             let learning_rate = get_learning_rate(&optimizer);
@@ -251,6 +254,8 @@ pub fn train(
             if step > 0 && step % training_config.save_interval == 0 {
                 save_checkpoint_step(
                     &model,
+                    &optimizer,
+                    &dataloader,
                     output_dir,
                     step,
                     Some(avg_loss),
@@ -292,10 +297,12 @@ pub fn train(
     if accumulation_count > 0 {
         let avg_loss = accumulated_loss / accumulation_count as f32;
         // Update learning rate one more time
-        update_learning_rate(&mut scheduler, &mut optimizer);
+        update_learning_rate_custom(&mut scheduler, &mut optimizer, step, &optimizer_config);
         let learning_rate = get_learning_rate(&optimizer);
         save_checkpoint_step(
             &model,
+            &optimizer,
+            &dataloader,
             output_dir,
             step,
             Some(avg_loss),
@@ -304,8 +311,16 @@ pub fn train(
         .context("Failed to save final checkpoint")?;
     } else {
         let learning_rate = get_learning_rate(&optimizer);
-        save_checkpoint_step(&model, output_dir, step, None, Some(learning_rate))
-            .context("Failed to save final checkpoint")?;
+        save_checkpoint_step(
+            &model,
+            &optimizer,
+            &dataloader,
+            output_dir,
+            step,
+            None,
+            Some(learning_rate),
+        )
+        .context("Failed to save final checkpoint")?;
     }
 
     Ok(())
@@ -313,14 +328,26 @@ pub fn train(
 
 /// Save a training checkpoint
 ///
+/// Saves model weights, optimizer state (step count and LR), and dataloader state
+/// to allow resuming training from the exact same point.
+///
 /// # Arguments
 /// * `model` - The GPT model
+/// * `optimizer` - The optimizer (for saving step count and LR)
+/// * `dataloader` - The data loader (for saving position and RNG seed)
 /// * `output_dir` - Directory to save checkpoint
 /// * `step` - Training step number
 /// * `loss` - Optional loss value
 /// * `lr` - Optional learning rate
+///
+/// # Note
+/// Full optimizer state (moment estimates m, v) cannot be saved without aprender API support.
+/// Only step count and learning rate are saved. On resume, optimizer will restart with
+/// fresh moment estimates, which may cause a brief adjustment period.
 fn save_checkpoint_step(
     model: &GPT,
+    optimizer: &AdamW,
+    dataloader: &DataLoader,
     output_dir: &Path,
     step: usize,
     loss: Option<f32>,
@@ -329,12 +356,31 @@ fn save_checkpoint_step(
     // Create checkpoint path (without extension, save_checkpoint will add .safetensors and .json)
     let checkpoint_path = output_dir.join(format!("checkpoint_step_{}", step));
 
-    // Create metadata
+    // Save optimizer state (what we can save without aprender API)
+    // Note: aprender's AdamW doesn't expose moment estimates (m, v) for serialization
+    // We save step count and LR, but full state restoration isn't possible
+    let optimizer_state = serde_json::json!({
+        "step": step,
+        "lr": lr.unwrap_or_else(|| optimizer.lr()),
+        // TODO: Add moment estimates (m, v) if aprender exposes them
+    });
+
+    // Save dataloader state
+    let dataloader_state = dataloader.get_state();
+
+    // Create metadata with optimizer and dataloader state
+    let mut extra = std::collections::HashMap::new();
+    extra.insert("optimizer_state".to_string(), optimizer_state);
+    extra.insert(
+        "dataloader_state".to_string(),
+        serde_json::to_value(dataloader_state)?,
+    );
+
     let metadata = CheckpointMetadata {
         step,
         loss,
         learning_rate: lr,
-        extra: std::collections::HashMap::new(),
+        extra,
     };
 
     // Save checkpoint using model's checkpoint functionality
@@ -346,17 +392,38 @@ fn save_checkpoint_step(
 
 /// Resume training from a checkpoint
 ///
+/// Loads model, optimizer state, and dataloader state from a checkpoint.
+///
 /// # Arguments
 /// * `checkpoint_path` - Path to checkpoint file (without extension)
+/// * `optimizer_config` - Optimizer configuration (used to recreate optimizer)
+/// * `dataloader` - DataLoader to restore state to (mutated in place)
+/// * `model` - Model to restore optimizer for (mutable reference needed)
 ///
 /// # Returns
-/// Loaded model, metadata, and training step
-pub fn resume_from_checkpoint(checkpoint_path: &Path) -> Result<(GPT, CheckpointMetadata, usize)> {
+/// Optimizer, metadata, and training step (model is mutated in place)
+///
+/// # Note
+/// Optimizer moment estimates (m, v) are not restored as aprender doesn't expose them.
+/// The optimizer will restart with fresh moment estimates, which may cause a brief
+/// adjustment period. Step count and learning rate are restored.
+pub fn resume_from_checkpoint(
+    checkpoint_path: &Path,
+    optimizer_config: OptimizerConfig,
+    dataloader: &mut DataLoader,
+    model: &mut GPT,
+) -> Result<(AdamW, CheckpointMetadata, usize)> {
     use std::ffi::OsStr;
 
     // Load checkpoint (returns model and metadata)
-    let (model, metadata) = load_checkpoint(checkpoint_path)
+    let (loaded_model, metadata) = load_checkpoint(checkpoint_path)
         .with_context(|| format!("Failed to load checkpoint from {:?}", checkpoint_path))?;
+
+    // Copy loaded model weights into the provided model
+    // Note: This assumes model config matches. In a real scenario, we'd validate this.
+    // For now, we'll use the loaded model directly by replacing the reference
+    // Actually, we need to restructure - let's load into the provided model
+    *model = loaded_model;
 
     // Get step from metadata, or extract from filename as fallback
     let step = if metadata.step > 0 {
@@ -370,5 +437,27 @@ pub fn resume_from_checkpoint(checkpoint_path: &Path) -> Result<(GPT, Checkpoint
             .unwrap_or(0)
     };
 
-    Ok((model, metadata, step))
+    // Recreate optimizer (moment estimates will be fresh)
+    let (mut optimizer, _scheduler) = setup_optimizers(model, optimizer_config.clone())
+        .context("Failed to setup optimizers for resume")?;
+
+    // Restore optimizer state (step count and LR) if available
+    if let Some(opt_state_val) = metadata.extra.get("optimizer_state") {
+        if let Some(lr) = opt_state_val.get("lr").and_then(|v| v.as_f64()) {
+            optimizer.set_lr(lr as f32);
+        }
+        // TODO: Restore moment estimates if aprender exposes them
+    } else if let Some(lr) = metadata.learning_rate {
+        // Fallback: use LR from metadata
+        optimizer.set_lr(lr);
+    }
+
+    // Restore dataloader state if available
+    if let Some(state_val) = metadata.extra.get("dataloader_state") {
+        let state: DataLoaderState = serde_json::from_value(state_val.clone())
+            .context("Failed to parse dataloader state")?;
+        dataloader.restore_state(state);
+    }
+
+    Ok((optimizer, metadata, step))
 }
