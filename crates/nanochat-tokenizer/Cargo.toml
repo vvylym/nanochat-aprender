@@ -21,3 +21,7 @@ proptest = { workspace = true }
 pretty_assertions = { workspace = true }
 tempfile = "3.8"
 
+[features]
+default = ["cpu-only"]
+cpu-only = []
+
