@@ -12,6 +12,7 @@ use nanochat_model::{
     checkpoint::{load_checkpoint, save_checkpoint, CheckpointMetadata},
     GPT,
 };
+use serde_json::{Map, Value};
 use std::path::Path;
 
 /// Training configuration
@@ -369,11 +370,17 @@ fn save_checkpoint_step(
     // Save optimizer state
     // Currently saves step count and LR. Full state (moment estimates m, v) will be saved
     // once Optimizer::get_state() API is merged into the main aprender repository.
-    let optimizer_state = serde_json::json!({
-        "step": step,
-        "lr": lr.unwrap_or_else(|| optimizer.lr()),
-        // TODO: Use optimizer.get_state() to save full state (m, v) once API is merged
-    });
+    let current_lr = lr.unwrap_or_else(|| optimizer.lr());
+    let mut optimizer_state_map = Map::new();
+    optimizer_state_map.insert("step".to_string(), Value::Number(step.into()));
+    optimizer_state_map.insert(
+        "lr".to_string(),
+        Value::Number(
+            serde_json::Number::from_f64(current_lr as f64)
+                .expect("LR should be a valid f64"),
+        ),
+    );
+    let optimizer_state = Value::Object(optimizer_state_map);
 
     // Save dataloader state
     let dataloader_state = dataloader.get_state();
