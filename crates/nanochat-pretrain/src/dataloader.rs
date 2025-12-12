@@ -48,19 +48,29 @@ impl DataLoader {
     /// * `batch_size` - Batch size
     /// * `seq_len` - Sequence length
     /// * `num_workers` - Number of worker threads (currently unused, for future use)
+    /// * `seed` - Optional random seed for reproducibility (None = non-deterministic)
     pub fn new(
         data_dir: &Path,
         tokenizer: Tokenizer,
         batch_size: usize,
         seq_len: usize,
         num_workers: usize,
+        seed: Option<u64>,
     ) -> Result<Self> {
         // Load and tokenize all text files in the directory
         let token_ids = Self::load_and_tokenize(data_dir, &tokenizer)
             .context("Failed to load and tokenize data")?;
 
-        // Initialize RNG with a seed
-        let rng_seed = 42; // TODO: Make configurable or use timestamp
+        // Initialize RNG with provided seed or generate from entropy
+        // Uses StdRng with SeedableRng::seed_from_u64() per Principle VII
+        let rng_seed = seed.unwrap_or_else(|| {
+            // Generate seed from current time if not provided
+            use std::time::{SystemTime, UNIX_EPOCH};
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards")
+                .as_secs()
+        });
         let rng = StdRng::seed_from_u64(rng_seed);
 
         Ok(Self {

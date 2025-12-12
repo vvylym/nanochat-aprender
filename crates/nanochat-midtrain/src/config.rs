@@ -1,4 +1,4 @@
-//! Training configuration structures for pretraining
+//! Training configuration structures for mid-training
 //!
 //! This module provides configuration structures for loading training hyperparameters
 //! from JSON files, replacing hardcoded values with configurable options.
@@ -10,7 +10,7 @@ use std::path::Path;
 /// Complete training configuration loaded from file
 ///
 /// This structure matches the JSON config file format and contains all
-/// hyperparameters needed for pretraining.
+/// hyperparameters needed for mid-training.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrainingConfigFile {
     /// Model configuration
@@ -126,8 +126,7 @@ impl TrainingConfigFile {
 
     /// Create default configuration
     ///
-    /// Returns a configuration with sensible defaults matching the Python
-    /// reference implementation's default values.
+    /// Returns a configuration with sensible defaults for mid-training.
     ///
     /// # Returns
     /// Default configuration instance

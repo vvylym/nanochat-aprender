@@ -193,19 +193,19 @@
 
 ### Tests for Mid-Training (Write First)
 
-- [ ] T070 [P] [US3] Create unit test for conversational data loading in `crates/nanochat-midtrain/tests/test_dataloader.rs`
-- [ ] T071 [P] [US3] Create integration test for mid-training loop in `crates/nanochat-midtrain/tests/test_train.rs`
+- [X] T070 [P] [US3] Create unit test for conversational data loading in `crates/nanochat-midtrain/tests/test_dataloader.rs`
+- [X] T071 [P] [US3] Create integration test for mid-training loop in `crates/nanochat-midtrain/tests/test_train.rs`
 
 ### Implementation for Mid-Training
 
-- [ ] T072 [US3] Create `crates/nanochat-midtrain/src/main.rs` with CLI entry point using clap
-- [ ] T073 [US3] Implement command-line argument parsing in `crates/nanochat-midtrain/src/main.rs` (config, base-model, data-dir, output-dir, resume, workers, etc.) - Note: No `--device` option (device selection is compile-time via `gpu` feature flag per plan.md)
-- [ ] T074 [US3] Implement conversational data loading in `crates/nanochat-midtrain/src/dataloader.rs` with conversation format support
-- [ ] T075 [US3] Implement training loop in `crates/nanochat-midtrain/src/train.rs` reusing pretraining infrastructure but with conversational data
-- [ ] T076 [US3] Implement checkpoint saving and resumption in `crates/nanochat-midtrain/src/train.rs`
-- [ ] T077 [US3] Implement training metrics logging in `crates/nanochat-midtrain/src/train.rs`
-- [ ] T078 [US3] Add comprehensive documentation for CLI interface in `crates/nanochat-midtrain/src/main.rs`
-- [ ] T079 [US3] Add error handling for training failures in `crates/nanochat-midtrain/src/train.rs`
+- [X] T072 [US3] Create `crates/nanochat-midtrain/src/main.rs` with CLI entry point using clap
+- [X] T073 [US3] Implement command-line argument parsing in `crates/nanochat-midtrain/src/main.rs` (config, base-model, data-dir, output-dir, resume, workers, etc.) - Note: No `--device` option (device selection is compile-time via `gpu` feature flag per plan.md)
+- [X] T074 [US3] Implement conversational data loading in `crates/nanochat-midtrain/src/dataloader.rs` with conversation format support
+- [X] T075 [US3] Implement training loop in `crates/nanochat-midtrain/src/train.rs` reusing pretraining infrastructure but with conversational data
+- [X] T076 [US3] Implement checkpoint saving and resumption in `crates/nanochat-midtrain/src/train.rs`
+- [X] T077 [US3] Implement training metrics logging in `crates/nanochat-midtrain/src/train.rs`
+- [X] T078 [US3] Add comprehensive documentation for CLI interface in `crates/nanochat-midtrain/src/main.rs`
+- [X] T079 [US3] Add error handling for training failures in `crates/nanochat-midtrain/src/train.rs`
 
 **Checkpoint**: Mid-training crate complete, can fine-tune pretrained model for conversational ability
 

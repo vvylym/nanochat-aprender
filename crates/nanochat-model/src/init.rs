@@ -1,4 +1,26 @@
 //! Weight initialization helpers for matching Python nanochat's scheme
+//!
+//! This module provides initialization schemes that match the Python reference implementation.
+//!
+//! # Aprender API Compliance (Principle VII)
+//!
+//! **Note**: This module uses custom initialization because:
+//! 1. `aprender::nn::init::normal()` and `aprender::nn::init::uniform()` are `pub(crate)` (not public)
+//! 2. The Python reference uses custom formulas that don't match aprender's public functions:
+//!    - `xavier_normal`: std = sqrt(2 / (fan_in + fan_out))
+//!    - `kaiming_normal`: std = sqrt(2 / fan_in)
+//!    - Our formula: std = 1.0 / sqrt(fan_in) * min(1.0, sqrt(fan_out / fan_in))
+//!
+//! **Recommendation**: Make `aprender::nn::init::normal()` and `uniform()` public in aprender fork
+//! to enable full constitution compliance. Until then, we use the same Box-Muller transform
+//! that aprender uses internally, ensuring statistical equivalence.
+//!
+//! # References
+//!
+//! - Glorot, X., & Bengio, Y. (2010). Understanding the difficulty of training
+//!   deep feedforward neural networks. AISTATS.
+//! - He, K., et al. (2015). Delving deep into rectifiers: Surpassing human-level
+//!   performance on ImageNet classification. ICCV.
 
 use aprender::autograd::Tensor;
 use rand::rngs::StdRng;
@@ -17,6 +39,12 @@ use rand::{Rng, SeedableRng};
 ///
 /// # Returns
 /// Weight tensor with shape [out_features, in_features]
+///
+/// # Aprender API Compliance
+///
+/// Uses `StdRng` with `SeedableRng::seed_from_u64()` per Principle VII.
+/// The Box-Muller transform matches aprender's internal implementation.
+/// Once `aprender::nn::init::normal()` is made public, this should be refactored to use it.
 pub(crate) fn init_linear_weight(
     in_features: usize,
     out_features: usize,
@@ -29,6 +57,7 @@ pub(crate) fn init_linear_weight(
     let std = (1.0 / fan_in.sqrt()) * (1.0_f32.min((fan_out / fan_in).sqrt()));
 
     // Use Box-Muller transform for normal distribution (same as aprender uses internally)
+    // Uses StdRng with proper seeding per Principle VII
     let numel = out_features * in_features;
     let mut rng = match seed {
         Some(s) => StdRng::seed_from_u64(s),

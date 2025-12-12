@@ -111,6 +111,7 @@ fn main() -> Result<()> {
         config_file.training.batch_size,
         config_file.training.seq_len,
         args.workers,
+        config_file.training.seed,
     )
     .context("Failed to create data loader")?;
 
@@ -170,6 +171,7 @@ fn main() -> Result<()> {
                 config_file.training.batch_size,
                 config_file.training.seq_len,
                 args.workers,
+                config_file.training.seed,
             )
             .context("Failed to create validation data loader")?,
         )
