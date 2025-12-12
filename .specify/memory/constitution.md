@@ -1,24 +1,23 @@
 <!--
 Sync Impact Report:
-Version: 1.2.0 → 1.3.0 (Added task completion verification requirements to prevent premature task completion)
+Version: 1.3.0 → 1.4.0 (Added mandatory pre-commit/pre-push quality gates to ensure CI workflow compliance)
 Principles Added:
   - None
 Principles Modified:
   - None
 Sections Added:
-  - Task Completion Verification (in Development Workflow)
+  - Pre-Commit/Pre-Push Requirements (in Development Workflow)
 Sections Modified:
-  - Development Workflow (added task completion verification: checklist requirement, TODO/placeholder checks, reference alignment)
+  - Development Workflow (added mandatory pre-commit/pre-push requirements: formatting, linting, testing before version control operations)
 Templates Updated:
   - ✅ .specify/templates/tasks-template.md (Already has quality gates section - no changes needed)
-  - ⚠ .specify/templates/plan-template.md (May need task completion process section - review recommended)
+  - ⚠ .specify/templates/plan-template.md (May need pre-commit process section - review recommended)
   - ⚠ .specify/templates/spec-template.md (May need quality assurance section - review recommended)
-  - ✅ .specify/templates/task-completion-checklist.md (Created as new template artifact)
+  - ✅ .specify/templates/task-completion-checklist.md (No changes needed)
 Critical Issues Addressed:
-  - MANDATORY: Task completion checklist must be completed before marking tasks complete
-  - MANDATORY: No TODOs/placeholders allowed in completed tasks
-  - MANDATORY: Reference implementation alignment verification required
-  - Prevents premature task completion that led to 18 gaps in Phase 4 implementation
+  - MANDATORY: Formatting, linting, and testing must pass before any commit or push
+  - MANDATORY: All CI workflows must pass locally before version control operations
+  - Prevents CI pipeline failures by catching issues before code enters version control
 -->
 
 # Nanochat-Rust Constitution
@@ -163,6 +162,14 @@ Critical Issues Addressed:
 - **Aprender API verification**: Before implementing any ML functionality, developers MUST verify aprender's API availability and use it when available
 - **No wheel reinvention**: PRs MUST be rejected if they implement functionality that aprender already provides (see Principle VII)
 
+**Pre-Commit/Pre-Push Requirements**:
+- **MANDATORY**: Before ANY commit or push to version control, the following commands MUST pass:
+  1. **Formatting**: `cargo fmt --all` - The entire workspace MUST be formatted using rustfmt
+  2. **Linting**: `cargo clippy --all-targets --all-features -- -D warnings` - All code MUST pass clippy with zero warnings
+  3. **Testing**: `cargo test --all-features` - All tests MUST pass, including unit tests, integration tests, and doc tests
+- **MUST NOT**: Commits or pushes that fail any of the above checks are FORBIDDEN
+- **Rationale**: Ensures all CI workflows will pass by catching formatting, linting, and test failures before code enters version control. This prevents CI pipeline failures, reduces review cycles, and maintains code quality standards across the entire workspace. Developers MUST run these checks locally before committing or pushing to ensure CI compliance.
+
 **MANDATORY Quality Gates**: Before marking any task as complete, the following commands MUST pass:
 - **Formatting**: `cargo fmt --all` - All code MUST be formatted using rustfmt
 - **Linting**: `cargo clippy --workspace --all-features --all-targets` - All code MUST pass clippy checks with no warnings
@@ -208,4 +215,4 @@ This constitution supersedes all other development practices and guidelines. All
 - Constitution violations are blocking issues and MUST be resolved before merge
 - Regular audits SHOULD be conducted to ensure ongoing compliance
 
-**Version**: 1.3.0 | **Ratified**: 2025-12-01 | **Last Amended**: 2024-12-19
+**Version**: 1.4.0 | **Ratified**: 2025-12-01 | **Last Amended**: 2025-12-05

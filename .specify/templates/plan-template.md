@@ -31,6 +31,12 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
+**Pre-Commit/Pre-Push Requirements** (MANDATORY):
+- [ ] All code formatted with `cargo fmt --all` before commit/push
+- [ ] All code passes `cargo clippy --all-targets --all-features -- -D warnings` before commit/push
+- [ ] All tests pass with `cargo test --all-features` before commit/push
+- [ ] CI workflows will pass (verified locally before version control operations)
+
 **I. Pure Rust (Zero C/C++ Dependencies)**
 - [ ] All dependencies are pure Rust crates (no FFI, no C/C++ compilation)
 - [ ] No build-time C/C++ steps required
