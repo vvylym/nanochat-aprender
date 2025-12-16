@@ -96,9 +96,10 @@ fn test_validation_evaluation() {
     let mut val_dataloader = DataLoader::new(
         temp_dir.path(),
         tokenizer,
-        2, // batch_size
-        5, // seq_len
-        1, // num_workers
+        2,        // batch_size
+        5,        // seq_len
+        1,        // num_workers
+        Some(42), // seed
     )
     .expect("Failed to create validation dataloader");
 

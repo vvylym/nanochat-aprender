@@ -12,9 +12,10 @@ fn test_dataloader_creation() {
     let dataloader = DataLoader::new(
         data_dir.path(),
         tokenizer,
-        32,  // batch_size
-        256, // seq_len
-        1,   // num_workers
+        32,       // batch_size
+        256,      // seq_len
+        1,        // num_workers
+        Some(42), // seed
     )
     .expect("Failed to create DataLoader");
 
@@ -30,9 +31,10 @@ fn test_dataloader_batching() {
     let mut dataloader = DataLoader::new(
         data_dir.path(),
         tokenizer,
-        2,  // batch_size
-        10, // seq_len
-        1,  // num_workers
+        2,        // batch_size
+        10,       // seq_len
+        1,        // num_workers
+        Some(42), // seed
     )
     .expect("Failed to create DataLoader");
 
@@ -56,11 +58,11 @@ fn test_dataloader_shuffling() {
     let tokenizer = create_test_tokenizer();
     let data_dir = create_test_data_dir();
 
-    let mut dataloader1 = DataLoader::new(data_dir.path(), tokenizer.clone(), 2, 10, 1)
+    let mut dataloader1 = DataLoader::new(data_dir.path(), tokenizer.clone(), 2, 10, 1, Some(42))
         .expect("Failed to create DataLoader");
 
-    let mut dataloader2 =
-        DataLoader::new(data_dir.path(), tokenizer, 2, 10, 1).expect("Failed to create DataLoader");
+    let mut dataloader2 = DataLoader::new(data_dir.path(), tokenizer, 2, 10, 1, Some(43))
+        .expect("Failed to create DataLoader");
 
     // Get batches from both loaders
     let (inputs1, _targets1) = dataloader1
@@ -89,9 +91,10 @@ fn test_dataloader_target_shifting() {
     let mut dataloader = DataLoader::new(
         data_dir.path(),
         tokenizer,
-        1, // batch_size
-        5, // seq_len
-        1, // num_workers
+        1,        // batch_size
+        5,        // seq_len
+        1,        // num_workers
+        Some(42), // seed
     )
     .expect("Failed to create DataLoader");
 
@@ -125,9 +128,10 @@ fn test_dataloader_tokenization() {
     let mut dataloader = DataLoader::new(
         data_dir.path(),
         tokenizer,
-        1, // batch_size
-        5, // seq_len
-        1, // num_workers
+        1,        // batch_size
+        5,        // seq_len
+        1,        // num_workers
+        Some(42), // seed
     )
     .expect("Failed to create DataLoader");
 
@@ -177,9 +181,10 @@ fn test_dataloader_state_checkpointing() {
     let mut dataloader = DataLoader::new(
         data_dir.path(),
         tokenizer,
-        2,  // batch_size
-        10, // seq_len
-        1,  // num_workers
+        2,        // batch_size
+        10,       // seq_len
+        1,        // num_workers
+        Some(42), // seed
     )
     .expect("Failed to create DataLoader");
 

@@ -161,8 +161,16 @@ impl TokenEmbedding {
     pub fn new(vocab_size: usize, n_embd: usize, seed: Option<u64>) -> Self {
         // Initialize embedding weights with normal distribution
         // Python: torch.nn.init.normal_(module.weight, mean=0.0, std=1.0)
-        // Note: aprender's init::normal() is not public, so we use the same
-        // Box-Muller transform that aprender uses internally, matching Python's std=1.0
+        //
+        // # Aprender API Compliance (Principle VII)
+        // Note: aprender's init::normal() is pub(crate) (not public), so we cannot use
+        // aprender::nn::init::normal() directly. We use the same Box-Muller transform
+        // that aprender uses internally, ensuring statistical equivalence.
+        //
+        // Recommendation: Make aprender::nn::init::normal() public in aprender fork
+        // to enable: let weight = aprender::nn::init::normal(&[vocab_size, n_embd], 0.0, 1.0, seed);
+        //
+        // Until then, we use StdRng with SeedableRng::seed_from_u64() per Principle VII.
         use rand::rngs::StdRng;
         use rand::{Rng, SeedableRng};
 
