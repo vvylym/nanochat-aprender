@@ -26,7 +26,22 @@
 pub use aprender::text::tokenize::{BpeTokenizer, SpecialTokens};
 
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 use std::path::Path;
+
+/// Special tokens used for conversational fine-tuning
+/// Per FR-029.1 and FR-029.2, these tokens are required for conversation tokenization
+pub const SPECIAL_TOKENS: &[&str] = &[
+    "<|bos|>",
+    "<|user_start|>",
+    "<|user_end|>",
+    "<|assistant_start|>",
+    "<|assistant_end|>",
+    "<|python_start|>",
+    "<|python_end|>",
+    "<|output_start|>",
+    "<|output_end|>",
+];
 
 /// Tokenizer data
 ///
@@ -72,6 +87,8 @@ impl Tokenizer {
         let corpus: Vec<&str> = corpus_owned.iter().map(|s| s.as_str()).collect();
 
         // Use aprender's BPE tokenizer
+        // Note: Special tokens should be included in the training corpus or added manually
+        // aprender's BpeTokenizer doesn't support adding special tokens after training
         let bpe = BpeTokenizer::train(&corpus, vocab_size)
             .map_err(|e| anyhow::anyhow!("Failed to train BPE tokenizer: {}", e))?;
 
@@ -342,6 +359,216 @@ impl Tokenizer {
 
         Ok(())
     }
+
+    /// Render a conversation into token IDs with training mask
+    ///
+    /// This method tokenizes a conversation following the Python reference implementation.
+    /// It handles system message merging, role validation, and generates a training mask
+    /// where mask=1 indicates assistant tokens to train on, mask=0 for user/system tokens.
+    ///
+    /// # Arguments
+    /// * `conversation` - Conversation object with messages array
+    /// * `max_tokens` - Maximum sequence length (default: 2048)
+    ///
+    /// # Returns
+    /// Tuple of (token_ids, training_mask) where:
+    /// - `token_ids`: Vector of token IDs
+    /// - `training_mask`: Vector of mask values (1 for assistant tokens, 0 for others)
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - Conversation has invalid structure
+    /// - Messages don't alternate correctly
+    /// - Special tokens are missing
+    pub fn render_conversation(
+        &self,
+        conversation: &Conversation,
+        max_tokens: usize,
+    ) -> Result<(Vec<u32>, Vec<u8>)> {
+        let mut ids = Vec::new();
+        let mut mask = Vec::new();
+
+        // Helper function to add tokens with mask value
+        let mut add_tokens = |token_ids: Vec<u32>, mask_val: u8| {
+            ids.extend_from_slice(&token_ids);
+            mask.extend(std::iter::repeat_n(mask_val, token_ids.len()));
+        };
+
+        // Handle system message: merge with first user message
+        let mut messages = conversation.messages.clone();
+        if !messages.is_empty() && messages[0].role == "system" {
+            if messages.len() < 2 {
+                anyhow::bail!("System message must be followed by a user message");
+            }
+            if messages[1].role != "user" {
+                anyhow::bail!("System message must be followed by a user message");
+            }
+            // Merge system message content with first user message
+            let system_content = match &messages[0].content {
+                MessageContent::String(s) => s.clone(),
+                MessageContent::Parts(_) => {
+                    anyhow::bail!("System messages must have string content");
+                }
+            };
+            let user_content = match &messages[1].content {
+                MessageContent::String(s) => s.clone(),
+                MessageContent::Parts(_) => {
+                    anyhow::bail!("User messages must have string content");
+                }
+            };
+            messages[1].content =
+                MessageContent::String(format!("{}\n\n{}", system_content, user_content));
+            messages.remove(0);
+        }
+
+        if messages.is_empty() {
+            anyhow::bail!("Conversation must have at least 1 message");
+        }
+
+        // Get special token IDs
+        let bos = self.special_token_id("<|bos|>")?;
+        let user_start = self.special_token_id("<|user_start|>")?;
+        let user_end = self.special_token_id("<|user_end|>")?;
+        let assistant_start = self.special_token_id("<|assistant_start|>")?;
+        let assistant_end = self.special_token_id("<|assistant_end|>")?;
+
+        // Optional tool call tokens (may not exist if tool calls aren't implemented)
+        let python_start = self.special_token_id("<|python_start|>").ok();
+        let python_end = self.special_token_id("<|python_end|>").ok();
+        let output_start = self.special_token_id("<|output_start|>").ok();
+        let output_end = self.special_token_id("<|output_end|>").ok();
+
+        // Add BOS token (mask=0, not trained)
+        add_tokens(vec![bos], 0);
+
+        // Process messages
+        for (i, message) in messages.iter().enumerate() {
+            // Validate role alternation
+            let expected_role = if i % 2 == 0 { "user" } else { "assistant" };
+            if message.role != expected_role {
+                anyhow::bail!(
+                    "Message {} has role '{}' but should be '{}'",
+                    i,
+                    message.role,
+                    expected_role
+                );
+            }
+
+            match message.role.as_str() {
+                "user" => {
+                    // User messages: content must be string
+                    let content = match &message.content {
+                        MessageContent::String(s) => s.clone(),
+                        MessageContent::Parts(_) => {
+                            anyhow::bail!("User messages must have string content, not parts");
+                        }
+                    };
+                    let content_ids = self.encode(&content)?;
+                    add_tokens(vec![user_start], 0);
+                    add_tokens(content_ids, 0);
+                    add_tokens(vec![user_end], 0);
+                }
+                "assistant" => {
+                    add_tokens(vec![assistant_start], 0);
+                    match &message.content {
+                        MessageContent::String(s) => {
+                            // Simple string content
+                            let content_ids = self.encode(s)?;
+                            add_tokens(content_ids, 1); // Assistant tokens are trained
+                        }
+                        MessageContent::Parts(parts) => {
+                            // List of parts (for tool calls)
+                            for part in parts {
+                                let text = part.text.clone();
+                                let text_ids = self.encode(&text)?;
+                                match part.part_type.as_str() {
+                                    "text" => {
+                                        add_tokens(text_ids, 1); // Text parts are trained
+                                    }
+                                    "python" => {
+                                        // Python tool call
+                                        if let (Some(ps), Some(pe)) = (python_start, python_end) {
+                                            add_tokens(vec![ps], 1);
+                                            add_tokens(text_ids, 1);
+                                            add_tokens(vec![pe], 1);
+                                        } else {
+                                            // Tool call tokens not available, just add text
+                                            add_tokens(text_ids, 1);
+                                        }
+                                    }
+                                    "python_output" => {
+                                        // Python output (not supervised)
+                                        if let (Some(os), Some(oe)) = (output_start, output_end) {
+                                            add_tokens(vec![os], 0);
+                                            add_tokens(text_ids, 0);
+                                            add_tokens(vec![oe], 0);
+                                        } else {
+                                            // Tool call tokens not available, just add text (not trained)
+                                            add_tokens(text_ids, 0);
+                                        }
+                                    }
+                                    other => {
+                                        anyhow::bail!("Unknown part type: {}", other);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    add_tokens(vec![assistant_end], 1);
+                }
+                other => {
+                    anyhow::bail!("Unknown message role: {}", other);
+                }
+            }
+        }
+
+        // Truncate to max_tokens if needed
+        if ids.len() > max_tokens {
+            ids.truncate(max_tokens);
+            mask.truncate(max_tokens);
+        }
+
+        Ok((ids, mask))
+    }
+}
+
+/// Conversation structure for rendering
+///
+/// Represents a conversation with messages following the JSONL format
+/// used in mid-training data.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Conversation {
+    /// Array of messages in the conversation
+    pub messages: Vec<Message>,
+}
+
+/// Message in a conversation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Message {
+    /// Message role: "user", "assistant", or "system"
+    pub role: String,
+    /// Message content (string or list of parts for tool calls)
+    pub content: MessageContent,
+}
+
+/// Message content (string or list of parts)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum MessageContent {
+    /// Simple string content
+    String(String),
+    /// List of parts (for tool calls)
+    Parts(Vec<MessagePart>),
+}
+
+/// Message part (for tool calls)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessagePart {
+    /// Part type: "text", "python", "python_output"
+    #[serde(rename = "type")]
+    pub part_type: String,
+    /// Part text content
+    pub text: String,
 }
 
 #[cfg(test)]

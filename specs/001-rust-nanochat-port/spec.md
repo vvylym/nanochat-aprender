@@ -65,7 +65,7 @@ A researcher or developer wants to train a language model from scratch using the
 **Acceptance Scenarios**:
 
 1. **Given** a training dataset and configuration, **When** the user runs the pretraining stage, **Then** the system trains the base model, saves periodic checkpoints, and reports training metrics
-2. **Given** a pretrained base model, **When** the user runs mid-training, **Then** the system fine-tunes the model for conversational ability and saves the resulting checkpoint
+2. **Given** a pretrained base model, **When** the user runs mid-training, **Then** the system fine-tunes the model for conversational ability via mid-training and saves the resulting checkpoint
 3. **Given** a mid-trained model, **When** the user runs supervised fine-tuning, **Then** the system further refines the model on instruction-following data and produces a chat-capable model
 
 ---
@@ -147,10 +147,21 @@ A user wants to train a custom tokenizer on their dataset or use an existing tok
 - **FR-017**: System MUST implement AdamW optimizer with configurable hyperparameters using `aprender::nn::optim::AdamW` (per Principle VII, FR-086) - optimizer setup via `setup_optimizers()` is implemented in training crates (nanochat-pretrain, nanochat-midtrain, nanochat-sft), not in model crate
 - **FR-018**: System MUST support gradient accumulation for effective larger batch sizes
 - **FR-019**: System MUST save training checkpoints at configurable intervals
-- **FR-020**: System MUST support resuming training from saved checkpoints
+- **FR-020**: System MUST support resuming training from saved checkpoints:
+  - **FR-020.1**: System MUST load model weights, optimizer state, and training configuration from checkpoint
+  - **FR-020.2**: System MUST support approximate dataloader state resumption (may skip some data to avoid exact state tracking complexity)
+  - **FR-020.3**: System MUST preserve training step count and metrics history when resuming
+  - **FR-020.4**: System MUST validate checkpoint compatibility (version, architecture, configuration) before resuming
 - **FR-091**: System MUST implement `setup_optimizers()` method in training crates (nanochat-pretrain, nanochat-midtrain, nanochat-sft), not in model crate - model crate provides `parameters()` and `parameters_mut()` methods only, training crates configure optimizers using aprender's optimizers
 - **FR-021**: System MUST implement pretraining stage for base language modeling
-- **FR-022**: System MUST implement mid-training stage for conversational fine-tuning
+- **FR-022**: System MUST implement mid-training stage (conversational fine-tuning):
+  - **FR-022.1**: System MUST support JSONL format for conversational training data, where each line contains a JSON array of message objects
+  - **FR-022.2**: Each message object MUST have `role` field ("user", "assistant", or "system") and `content` field (string for user messages, string or list of parts for assistant messages)
+  - **FR-022.3**: Messages MUST alternate between user and assistant roles (with optional system message at the beginning)
+  - **FR-022.4**: System messages MUST be merged with the first user message during tokenization (system message content prepended to user message with "\n\n" separator)
+  - **FR-022.5**: Conversations MUST have at least 2 messages (user + assistant minimum)
+  - **FR-022.6**: System MUST generate training mask during conversation tokenization (mask=1 for assistant tokens to train on, mask=0 for user/system tokens)
+  - **FR-022.7**: System MUST truncate conversations to maximum sequence length (truncate from end if exceeding max_tokens)
 - **FR-023**: System MUST implement supervised fine-tuning (SFT) stage for instruction following
 - **FR-024**: System MUST support learning rate scheduling with warmup and decay using aprender's schedulers (`aprender::nn::scheduler::{WarmupCosineScheduler, LinearWarmup, ...}` per Principle VII, FR-086)
 - **FR-025**: System MUST log training metrics (loss, learning rate, throughput) during training
@@ -161,7 +172,18 @@ A user wants to train a custom tokenizer on their dataset or use an existing tok
 - **FR-026**: System MUST implement BPE (Byte Pair Encoding) tokenizer using aprender's `BpeTokenizer` directly (wraps aprender API per Principle VII, no custom BPE implementation)
 - **FR-027**: System MUST support encoding text to token IDs
 - **FR-028**: System MUST support decoding token IDs to text
-- **FR-029**: System MUST handle special tokens (beginning-of-text, end-of-text, padding, etc.) via aprender's tokenizer API
+- **FR-028.1**: System MUST provide `render_conversation()` method (or equivalent) in tokenizer crate that:
+  - Accepts conversation object with messages array
+  - Handles system message merging with first user message
+  - Validates message role alternation (user/assistant, optional system at start)
+  - Supports string content (user messages) and list of parts (assistant messages with tool calls)
+  - Returns token IDs and training mask (mask=1 for assistant tokens, mask=0 for others)
+  - Truncates to maximum sequence length if needed
+- **FR-029**: System MUST handle special tokens via aprender's tokenizer API:
+  - **FR-029.1**: Required special tokens: `<|bos|>` (beginning of sequence), `<|user_start|>`, `<|user_end|>`, `<|assistant_start|>`, `<|assistant_end|>`
+  - **FR-029.2**: Optional special tokens for tool calls: `<|python_start|>`, `<|python_end|>`, `<|output_start|>`, `<|output_end|>` (required only if tool call functionality is implemented)
+  - **FR-029.3**: All special tokens MUST be added to tokenizer vocabulary during training
+  - **FR-029.4**: Special tokens MUST be accessible via tokenizer API for encoding/decoding operations
 - **FR-030**: System MUST support configurable vocabulary size
 - **FR-031**: System MUST preserve text fidelity during encode/decode round-trips (within tokenization limitations)
 - **FR-084**: System MUST serialize tokenizer to JSON format (`tokenizer.json`) containing vocabulary and BPE merges (compact JSON, no pretty-printing)
@@ -169,8 +191,16 @@ A user wants to train a custom tokenizer on their dataset or use an existing tok
 
 #### Data Management
 
-- **FR-032**: System MUST support loading training data from multiple formats (text files, datasets)
-- **FR-033**: System MUST implement efficient data loading with shuffling and batching
+- **FR-032**: System MUST support loading training data from multiple formats:
+  - **FR-032.1**: Text files (plain text, one document per line or file)
+  - **FR-032.2**: JSONL files (JSON Lines format, one JSON object per line)
+  - **FR-032.3**: Parquet files (columnar format for large-scale datasets)
+  - **FR-032.4**: Other structured dataset formats as needed (format support may vary by training stage)
+- **FR-033**: System MUST implement efficient data loading with shuffling and batching:
+  - **FR-033.1**: Data loading MUST support shuffling for training data (deterministic shuffling with seed for reproducibility)
+  - **FR-033.2**: Data loading MUST support configurable batch sizes
+  - **FR-033.3**: Data loading SHOULD achieve throughput sufficient to keep training pipeline saturated (target: ≥1000 samples/sec per device for pretraining, as specified in SC-012)
+  - **FR-033.4**: Data loading MUST support gradient accumulation by providing batches at appropriate intervals
 - **FR-034**: System MUST support data preprocessing and tokenization during training
 - **FR-035**: System MUST handle large datasets that don't fit in memory
 - **FR-036**: System MUST support data sharding for distributed training

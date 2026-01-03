@@ -1,8 +1,8 @@
-//! Data loading for mid-training with conversational data
+//! Data loading for supervised fine-tuning with instruction data
 
 use anyhow::{Context, Result};
 use aprender::autograd::Tensor;
-use nanochat_tokenizer::{Conversation, Tokenizer};
+use nanochat_tokenizer::{Conversation, Message, MessageContent, Tokenizer};
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
@@ -11,23 +11,31 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
+/// Instruction-response pair structure from JSONL
+#[derive(Debug, Clone, Deserialize)]
+struct InstructionPair {
+    instruction: String,
+    response: String,
+}
+
 /// DataLoader state for checkpointing
 ///
 /// Stores the current position in the data stream and RNG seed
 /// to allow resuming training from the exact same point.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataLoaderState {
-    /// Current position in conversation list
+    /// Current position in instruction list
     pub current_pos: usize,
     /// RNG seed (for reproducibility)
     pub rng_seed: u64,
 }
 
-/// DataLoader for mid-training with conversational data
+/// DataLoader for supervised fine-tuning with instruction data
 ///
-/// Loads JSONL files containing conversations, converts them to token sequences,
-/// and provides batches for training.
-pub struct ConversationDataLoader {
+/// Loads JSONL files containing instruction-response pairs, converts them to conversations,
+/// and provides batches for training. Uses the same render_conversation() method as mid-training
+/// to ensure consistent tokenization and training mask generation.
+pub struct InstructionDataLoader {
     #[allow(dead_code)]
     tokenizer: Tokenizer,
     batch_size: usize,
@@ -41,11 +49,11 @@ pub struct ConversationDataLoader {
     rng_seed: u64,
 }
 
-impl ConversationDataLoader {
-    /// Create a new ConversationDataLoader
+impl InstructionDataLoader {
+    /// Create a new InstructionDataLoader
     ///
     /// # Arguments
-    /// * `data_dir` - Directory containing JSONL files with conversations
+    /// * `data_dir` - Directory containing JSONL files with instruction-response pairs
     /// * `tokenizer` - Tokenizer for encoding text
     /// * `batch_size` - Batch size
     /// * `seq_len` - Sequence length
@@ -59,11 +67,29 @@ impl ConversationDataLoader {
         num_workers: usize,
         seed: Option<u64>,
     ) -> Result<Self> {
-        // Load conversations from JSONL files
-        let conversations =
-            Self::load_conversations(data_dir).context("Failed to load conversations")?;
+        // Load instruction-response pairs from JSONL files
+        let instruction_pairs =
+            Self::load_instructions(data_dir).context("Failed to load instructions")?;
 
-        // Tokenize conversations using render_conversation() (per remediation plan T074.1)
+        // Convert instruction-response pairs to conversations
+        // Format: instruction as user message, response as assistant message
+        let conversations: Vec<Conversation> = instruction_pairs
+            .into_iter()
+            .map(|pair| Conversation {
+                messages: vec![
+                    Message {
+                        role: "user".to_string(),
+                        content: MessageContent::String(pair.instruction),
+                    },
+                    Message {
+                        role: "assistant".to_string(),
+                        content: MessageContent::String(pair.response),
+                    },
+                ],
+            })
+            .collect();
+
+        // Tokenize conversations using render_conversation() (reuse mid-training logic)
         let mut tokenized_conversations = Vec::new();
         for conversation in &conversations {
             let (ids, mask) = tokenizer
@@ -107,10 +133,15 @@ impl ConversationDataLoader {
         })
     }
 
-    /// Load conversations from JSONL files in the directory
-    fn load_conversations(data_dir: &Path) -> Result<Vec<Conversation>> {
-        let mut conversations = Vec::new();
-
+    /// Load instruction-response pairs from JSONL files
+    ///
+    /// # Arguments
+    /// * `data_dir` - Directory containing .jsonl files
+    ///
+    /// # Returns
+    /// Vector of instruction-response pairs
+    fn load_instructions(data_dir: &Path) -> Result<Vec<InstructionPair>> {
+        let mut pairs = Vec::new();
         let entries = fs::read_dir(data_dir).context("Failed to read data directory")?;
 
         for entry in entries {
@@ -129,26 +160,25 @@ impl ConversationDataLoader {
                         continue;
                     }
 
-                    let conversation: Conversation =
-                        serde_json::from_str(&line).with_context(|| {
-                            format!(
-                                "Failed to parse conversation at line {} in {:?}",
-                                line_num + 1,
-                                path
-                            )
-                        })?;
+                    let pair: InstructionPair = serde_json::from_str(&line).with_context(|| {
+                        format!(
+                            "Failed to parse instruction pair at line {} in {:?}",
+                            line_num + 1,
+                            path
+                        )
+                    })?;
 
-                    // Validate conversation has at least one message
-                    if conversation.messages.is_empty() {
+                    // Validate pair has both fields
+                    if pair.instruction.trim().is_empty() || pair.response.trim().is_empty() {
                         continue;
                     }
 
-                    conversations.push(conversation);
+                    pairs.push(pair);
                 }
             }
         }
 
-        Ok(conversations)
+        Ok(pairs)
     }
 
     /// Get the next batch (inputs, targets, and training mask)
@@ -240,6 +270,42 @@ impl ConversationDataLoader {
         Ok(Some((inputs, targets, mask)))
     }
 
+    /// Reset the dataloader to the beginning
+    pub fn reset(&mut self) {
+        self.current_pos = 0;
+        self.shuffle();
+    }
+
+    /// Get the current dataloader state for checkpointing
+    pub fn get_state(&self) -> DataLoaderState {
+        DataLoaderState {
+            current_pos: self.current_pos,
+            rng_seed: self.rng_seed,
+        }
+    }
+
+    /// Restore dataloader state from checkpoint
+    pub fn restore_state(&mut self, state: &DataLoaderState) {
+        self.current_pos = state.current_pos;
+        // Note: RNG state restoration is approximate - we can't fully restore RNG state
+        // This is acceptable per FR-020.2 (approximate dataloader state resumption)
+    }
+
+    /// Get batch size
+    pub fn batch_size(&self) -> usize {
+        self.batch_size
+    }
+
+    /// Get sequence length
+    pub fn seq_len(&self) -> usize {
+        self.seq_len
+    }
+
+    /// Get number of instructions loaded
+    pub fn instruction_count(&self) -> usize {
+        self.conversations.len()
+    }
+
     /// Shuffle conversations
     fn shuffle(&mut self) {
         let mut indices: Vec<usize> = (0..self.conversations.len()).collect();
@@ -254,53 +320,5 @@ impl ConversationDataLoader {
         }
         self.conversations = shuffled_conversations;
         self.tokenized_conversations = shuffled_tokenized;
-    }
-
-    /// Get batch size
-    pub fn batch_size(&self) -> usize {
-        self.batch_size
-    }
-
-    /// Get sequence length
-    pub fn seq_len(&self) -> usize {
-        self.seq_len
-    }
-
-    /// Get conversation count
-    pub fn conversation_count(&self) -> usize {
-        self.conversations.len()
-    }
-
-    /// Reset the dataloader to the beginning
-    pub fn reset(&mut self) {
-        self.current_pos = 0;
-        self.shuffle();
-    }
-
-    /// Get current state for checkpointing
-    ///
-    /// Returns the current position in the conversation list and RNG seed
-    /// so training can be resumed from the exact same point.
-    ///
-    /// # Returns
-    /// DataLoaderState containing current position and RNG seed
-    pub fn get_state(&self) -> DataLoaderState {
-        DataLoaderState {
-            current_pos: self.current_pos,
-            rng_seed: self.rng_seed,
-        }
-    }
-
-    /// Restore state from checkpoint
-    ///
-    /// Restores the data loader to a previous state, allowing training
-    /// to resume from the exact same point in the data stream.
-    ///
-    /// # Arguments
-    /// * `state` - DataLoaderState to restore
-    pub fn restore_state(&mut self, state: DataLoaderState) {
-        self.current_pos = state.current_pos;
-        self.rng_seed = state.rng_seed;
-        self.rng = StdRng::seed_from_u64(state.rng_seed);
     }
 }

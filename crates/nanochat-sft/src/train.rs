@@ -1,18 +1,18 @@
-//! Training loop for mid-training
+//! Training loop for supervised fine-tuning
 
-use crate::dataloader::{ConversationDataLoader, DataLoaderState};
+use crate::dataloader::{DataLoaderState, InstructionDataLoader};
 use crate::metrics::MetricsLogger;
 use crate::optimizer::{
     get_learning_rate, setup_optimizers, update_learning_rate_custom, OptimizerConfig,
 };
 use anyhow::{Context, Result};
-use aprender::nn::optim::{AdamW, Optimizer};
+use aprender::nn::optim::Optimizer;
 use nanochat_model::{
     checkpoint::{load_checkpoint, save_checkpoint, CheckpointMetadata},
     GPT,
 };
 use nanochat_pretrain::train::clip_gradients;
-use serde_json::Value;
+use serde_json::{self, Map, Number, Value};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -41,16 +41,16 @@ pub struct TrainingConfig {
     pub seed: Option<u64>,
 }
 
-/// Train the model using conversational data
+/// Train the model using instruction data
 ///
-/// This function implements the mid-training loop, which fine-tunes a pretrained
-/// model on conversational data. It reuses the pretraining infrastructure but
-/// uses conversational data loading.
+/// This function implements the supervised fine-tuning loop, which fine-tunes a mid-trained
+/// model on instruction-following data. It reuses the pretraining infrastructure but
+/// uses instruction data loading.
 ///
 /// # Arguments
-/// * `model` - The GPT model (pretrained, mutable reference needed for optimizer)
-/// * `tokenizer` - Tokenizer for encoding conversations
-/// * `data_dir` - Directory containing JSONL files with conversations
+/// * `model` - The GPT model (mid-trained, mutable reference needed for optimizer)
+/// * `tokenizer` - Tokenizer for encoding instructions
+/// * `data_dir` - Directory containing JSONL files with instruction-response pairs
 /// * `output_dir` - Directory for saving checkpoints
 /// * `training_config` - Training hyperparameters
 /// * `optimizer_config` - Optimizer configuration (None = use defaults)
@@ -78,7 +78,7 @@ pub fn train(
     })?;
 
     // Load or create data loader
-    let mut dataloader = ConversationDataLoader::new(
+    let mut dataloader = InstructionDataLoader::new(
         data_dir,
         tokenizer.clone(),
         training_config.batch_size,
@@ -136,7 +136,7 @@ pub fn train(
             let dataloader_state: DataLoaderState =
                 serde_json::from_value(dataloader_state_json.clone())
                     .context("Failed to parse dataloader state")?;
-            dataloader.restore_state(dataloader_state);
+            dataloader.restore_state(&dataloader_state);
         }
 
         println!("Resumed from checkpoint at step {}", start_step);
@@ -167,8 +167,8 @@ pub fn train(
         // TODO: Apply training mask to only train on assistant tokens (mask=1).
         // This requires computing per-token loss and applying mask before averaging.
         // For now, the mask is generated correctly by render_conversation(), but not yet
-        // applied to loss computation. This is acceptable as Phase 5 focuses on
-        // conversation tokenization and data loading infrastructure.
+        // applied to loss computation. This is acceptable as Phase 6 focuses on
+        // instruction data loading and training loop infrastructure.
         let loss = model
             .forward_training(&batch, &targets, None)
             .context("Forward training failed")?;
@@ -205,115 +205,85 @@ pub fn train(
 
             // Save checkpoint at intervals
             if step > 0 && step % training_config.save_interval == 0 {
-                save_checkpoint_step(
-                    model,
-                    &optimizer,
-                    &dataloader,
-                    output_dir,
+                let checkpoint_path =
+                    checkpoints_dir.join(format!("checkpoint_{}.safetensors", step));
+                let dataloader_state = dataloader.get_state();
+
+                // Create metadata with optimizer and dataloader state
+                let mut extra = HashMap::new();
+                let mut optimizer_state = Map::new();
+                optimizer_state.insert("step".to_string(), Value::Number(step.into()));
+                optimizer_state.insert(
+                    "lr".to_string(),
+                    Value::Number(
+                        Number::from_f64(learning_rate as f64).expect("Invalid learning rate"),
+                    ),
+                );
+                extra.insert(
+                    "optimizer_state".to_string(),
+                    Value::Object(optimizer_state),
+                );
+                extra.insert(
+                    "dataloader_state".to_string(),
+                    serde_json::to_value(&dataloader_state)
+                        .context("Failed to serialize dataloader state")?,
+                );
+
+                let metadata = CheckpointMetadata {
                     step,
-                    Some(avg_loss),
-                    Some(learning_rate),
-                )
-                .context("Failed to save checkpoint")?;
+                    loss: Some(avg_loss),
+                    learning_rate: Some(learning_rate),
+                    extra,
+                };
+
+                save_checkpoint(model, &checkpoint_path, Some(metadata))
+                    .context("Failed to save checkpoint")?;
+
+                println!("Saved checkpoint at step {} to {:?}", step, checkpoint_path);
             }
 
-            // Reset accumulation
+            // Reset accumulation counters
             accumulated_loss = 0.0;
             accumulation_count = 0;
+            step += 1;
         }
-
-        step += 1;
     }
 
     // Save final checkpoint
-    if accumulation_count > 0 {
-        let avg_loss = accumulated_loss / accumulation_count as f32;
-        update_learning_rate_custom(&mut scheduler, &mut optimizer, step, &optimizer_config);
-        let learning_rate = get_learning_rate(&optimizer);
-        save_checkpoint_step(
-            model,
-            &optimizer,
-            &dataloader,
-            output_dir,
-            step,
-            Some(avg_loss),
-            Some(learning_rate),
-        )
-        .context("Failed to save final checkpoint")?;
-    } else {
-        let learning_rate = get_learning_rate(&optimizer);
-        save_checkpoint_step(
-            model,
-            &optimizer,
-            &dataloader,
-            output_dir,
-            step,
-            None,
-            Some(learning_rate),
-        )
-        .context("Failed to save final checkpoint")?;
-    }
-
-    Ok(())
-}
-
-/// Save a training checkpoint
-///
-/// Saves model weights, optimizer state, and dataloader state to allow resuming training.
-fn save_checkpoint_step(
-    model: &GPT,
-    _optimizer: &AdamW,
-    dataloader: &ConversationDataLoader,
-    output_dir: &Path,
-    step: usize,
-    loss: Option<f32>,
-    learning_rate: Option<f32>,
-) -> Result<()> {
-    let checkpoint_path = output_dir.join("checkpoints").join(format!("step_{}.safetensors", step));
-
-    // Get dataloader state
+    let final_checkpoint_path = checkpoints_dir.join("checkpoint_final.safetensors");
     let dataloader_state = dataloader.get_state();
-    let dataloader_state_json =
-        serde_json::to_value(&dataloader_state).context("Failed to serialize dataloader state")?;
 
-    // Build optimizer state (step count and LR for now)
-    // Full state (m, v) will be saved once Optimizer::get_state() is merged
-    let mut optimizer_state = serde_json::Map::new();
-    optimizer_state.insert("step".to_string(), Value::Number(step.into()));
-    if let Some(lr) = learning_rate {
-        optimizer_state.insert(
-            "lr".to_string(),
-            Value::Number(serde_json::Number::from_f64(lr as f64).expect("Invalid LR")),
-        );
-    }
-
-    // Build extra metadata
     let mut extra = HashMap::new();
+    let mut optimizer_state = Map::new();
+    optimizer_state.insert("step".to_string(), Value::Number(step.into()));
+    let learning_rate = get_learning_rate(&optimizer);
+    optimizer_state.insert(
+        "lr".to_string(),
+        Value::Number(Number::from_f64(learning_rate as f64).expect("Invalid learning rate")),
+    );
     extra.insert(
         "optimizer_state".to_string(),
         Value::Object(optimizer_state),
     );
-    extra.insert("dataloader_state".to_string(), dataloader_state_json);
+    extra.insert(
+        "dataloader_state".to_string(),
+        serde_json::to_value(&dataloader_state).context("Failed to serialize dataloader state")?,
+    );
 
     let metadata = CheckpointMetadata {
         step,
-        loss,
-        learning_rate,
+        loss: Some(accumulated_loss / accumulation_count.max(1) as f32),
+        learning_rate: Some(get_learning_rate(&optimizer)),
         extra,
     };
 
-    save_checkpoint(model, &checkpoint_path, Some(metadata))
-        .context("Failed to save checkpoint")?;
+    save_checkpoint(model, &final_checkpoint_path, Some(metadata))
+        .context("Failed to save final checkpoint")?;
+
+    println!(
+        "Training completed! Final checkpoint saved to {:?}",
+        final_checkpoint_path
+    );
 
     Ok(())
-}
-
-/// Resume training from a checkpoint
-///
-/// Loads model weights and metadata from a checkpoint.
-pub fn resume_from_checkpoint(
-    checkpoint_path: &Path,
-    _config: &nanochat_model::GPTConfig,
-) -> Result<(GPT, CheckpointMetadata)> {
-    load_checkpoint(checkpoint_path).context("Failed to load checkpoint")
 }

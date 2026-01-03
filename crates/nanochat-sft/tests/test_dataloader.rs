@@ -1,24 +1,25 @@
-//! Unit tests for conversational data loading in mid-training
+//! Unit tests for instruction data loading in SFT
 
 use anyhow::Result;
-use nanochat_midtrain::dataloader::ConversationDataLoader;
+use nanochat_sft::dataloader::InstructionDataLoader;
 use nanochat_tokenizer::Tokenizer;
 use std::fs;
 use std::io::Write;
 use tempfile::TempDir;
 
-/// Create a temporary directory with conversational data files
+/// Create a temporary directory with instruction data files
 fn create_test_data_dir() -> Result<TempDir> {
     let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
     let data_dir = temp_dir.path();
 
-    // Create a JSONL file with conversational data
-    let jsonl_content = r#"{"messages": [{"role": "user", "content": "Hello, how are you?"}, {"role": "assistant", "content": "I'm doing well, thank you!"}]}
-{"messages": [{"role": "user", "content": "What is Rust?"}, {"role": "assistant", "content": "Rust is a systems programming language."}]}
-{"messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "Write a haiku"}, {"role": "assistant", "content": "Code flows like water,\nMemory safe and fast,\nRust brings joy to all."}]}
+    // Create a JSONL file with instruction-response pairs
+    // Format: {"instruction": "...", "response": "..."}
+    let jsonl_content = r#"{"instruction": "What is Rust?", "response": "Rust is a systems programming language focused on safety and performance."}
+{"instruction": "Write a hello world program", "response": "fn main() {\n    println!(\"Hello, world!\");\n}"}
+{"instruction": "Explain machine learning", "response": "Machine learning is a subset of artificial intelligence that enables systems to learn from data."}
 "#;
 
-    let jsonl_path = data_dir.join("conversations.jsonl");
+    let jsonl_path = data_dir.join("instructions.jsonl");
     let mut file = fs::File::create(&jsonl_path).expect("Failed to create test file");
     file.write_all(jsonl_content.as_bytes()).expect("Failed to write test data");
     file.flush().expect("Failed to flush");
@@ -42,9 +43,9 @@ fn create_test_tokenizer() -> Tokenizer {
     let mut corpus: Vec<&str> = vec![
         "hello world",
         "test data",
-        "conversation",
-        "user message",
-        "assistant response",
+        "instruction",
+        "response",
+        "What is",
     ];
 
     // Add each special token many times (as separate strings) to increase chance they're preserved
@@ -65,7 +66,7 @@ fn tokenizer_has_special_tokens(tokenizer: &Tokenizer) -> bool {
 }
 
 #[test]
-fn test_conversation_dataloader_creation() -> Result<()> {
+fn test_instruction_dataloader_creation() -> Result<()> {
     let temp_dir = create_test_data_dir().expect("Failed to create test data");
     let data_dir = temp_dir.path();
 
@@ -77,7 +78,7 @@ fn test_conversation_dataloader_creation() -> Result<()> {
         return Ok(());
     }
 
-    let dataloader = ConversationDataLoader::new(
+    let dataloader = InstructionDataLoader::new(
         data_dir,
         tokenizer,
         2,        // batch_size
@@ -94,7 +95,7 @@ fn test_conversation_dataloader_creation() -> Result<()> {
 }
 
 #[test]
-fn test_load_conversational_data() -> Result<()> {
+fn test_load_instruction_data() -> Result<()> {
     let temp_dir = create_test_data_dir().expect("Failed to create test data");
     let data_dir = temp_dir.path();
 
@@ -106,7 +107,7 @@ fn test_load_conversational_data() -> Result<()> {
         return Ok(());
     }
 
-    let dataloader = ConversationDataLoader::new(
+    let dataloader = InstructionDataLoader::new(
         data_dir,
         tokenizer,
         1,        // batch_size
@@ -115,52 +116,46 @@ fn test_load_conversational_data() -> Result<()> {
         Some(42), // seed
     )?;
 
-    // Verify that conversations were loaded
-    assert!(dataloader.conversation_count() > 0);
+    // Verify that instructions were loaded
+    assert!(dataloader.instruction_count() > 0);
 
     Ok(())
 }
 
 #[test]
-fn test_conversation_format_parsing() -> Result<()> {
-    // Test that we can parse the JSONL conversation format correctly
-    let jsonl_line = r#"{"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi there!"}]}"#;
+fn test_instruction_format_parsing() -> Result<()> {
+    // Test that we can parse the JSONL instruction format correctly
+    let jsonl_line = r#"{"instruction": "What is Rust?", "response": "Rust is a systems programming language."}"#;
 
     // Parse the JSON
     let parsed: serde_json::Value = serde_json::from_str(jsonl_line).expect("Failed to parse JSON");
 
     // Verify structure
-    assert!(parsed.get("messages").is_some());
-    let messages = parsed
-        .get("messages")
-        .expect("messages field should exist")
-        .as_array()
-        .expect("messages should be an array");
-
-    assert_eq!(messages.len(), 2);
+    assert!(parsed.get("instruction").is_some());
+    assert!(parsed.get("response").is_some());
     assert_eq!(
-        messages[0]
-            .get("role")
-            .expect("role should exist")
+        parsed
+            .get("instruction")
+            .expect("instruction field should exist")
             .as_str()
-            .expect("role should be a string"),
-        "user"
+            .expect("instruction should be a string"),
+        "What is Rust?"
     );
     assert_eq!(
-        messages[1]
-            .get("role")
-            .expect("role should exist")
+        parsed
+            .get("response")
+            .expect("response field should exist")
             .as_str()
-            .expect("role should be a string"),
-        "assistant"
+            .expect("response should be a string"),
+        "Rust is a systems programming language."
     );
 
     Ok(())
 }
 
 #[test]
-fn test_conversation_to_sequence() -> Result<()> {
-    // Test converting a conversation to a token sequence
+fn test_instruction_to_sequence() -> Result<()> {
+    // Test converting an instruction to a token sequence
     let temp_dir = create_test_data_dir().expect("Failed to create test data");
     let data_dir = temp_dir.path();
 
@@ -172,9 +167,9 @@ fn test_conversation_to_sequence() -> Result<()> {
         return Ok(());
     }
 
-    let mut dataloader = ConversationDataLoader::new(data_dir, tokenizer, 1, 128, 1, Some(42))?;
+    let mut dataloader = InstructionDataLoader::new(data_dir, tokenizer, 1, 128, 1, Some(42))?;
 
-    // Get a batch and verify it contains tokenized conversation data
+    // Get a batch and verify it contains tokenized instruction data
     let batch_opt = dataloader.next_batch().expect("Should be able to get a batch");
     if let Some((inputs, _targets, _mask)) = batch_opt {
         assert_eq!(inputs.shape()[0], 1); // batch size
@@ -187,7 +182,7 @@ fn test_conversation_to_sequence() -> Result<()> {
 #[test]
 fn test_dataloader_state_serialization() -> Result<()> {
     // Test that DataLoaderState can be serialized/deserialized for checkpointing
-    use nanochat_midtrain::dataloader::DataLoaderState;
+    use nanochat_sft::dataloader::DataLoaderState;
 
     let state = DataLoaderState {
         current_pos: 100,
