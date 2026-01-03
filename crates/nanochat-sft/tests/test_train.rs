@@ -3,12 +3,10 @@
 use anyhow::Result;
 use nanochat_model::{checkpoint::save_checkpoint, GPTConfig, GPT};
 use nanochat_sft::{
-    config::TrainingConfigFile,
     optimizer::OptimizerConfig,
     train::{train, TrainingConfig},
 };
 use nanochat_tokenizer::Tokenizer;
-use std::path::PathBuf;
 use tempfile::TempDir;
 
 /// Create a minimal test model
