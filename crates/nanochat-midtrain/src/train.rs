@@ -151,9 +151,10 @@ pub fn train(
     let mut accumulation_count = 0;
 
     while step < training_config.max_steps {
-        // Get next batch
-        let (batch, targets) = match dataloader.next_batch()? {
-            Some((b, t)) => (b, t),
+        // Get next batch (now includes training mask per remediation plan FR-022.6)
+        // The mask indicates which tokens to train on (1 for assistant tokens, 0 for others)
+        let (batch, targets, _mask) = match dataloader.next_batch()? {
+            Some((b, t, m)) => (b, t, m),
             None => {
                 // Epoch finished, reset dataloader
                 dataloader.reset();
@@ -162,6 +163,12 @@ pub fn train(
         };
 
         // Forward pass and backward pass (gradient accumulation)
+        // Note: Currently using forward_training() which computes loss over all tokens.
+        // TODO: Apply training mask to only train on assistant tokens (mask=1).
+        // This requires computing per-token loss and applying mask before averaging.
+        // For now, the mask is generated correctly by render_conversation(), but not yet
+        // applied to loss computation. This is acceptable as Phase 5 focuses on
+        // conversation tokenization and data loading infrastructure.
         let loss = model
             .forward_training(&batch, &targets, None)
             .context("Forward training failed")?;

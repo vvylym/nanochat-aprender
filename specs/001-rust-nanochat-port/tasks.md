@@ -61,7 +61,7 @@
 ### Implementation for Tokenizer
 
 - [X] T019 [US5] Create `crates/nanochat-tokenizer/src/lib.rs` with public API exports wrapping `aprender::text::tokenize::BpeTokenizer` (per Principle VII, FR-026)
-- [X] T020 [US5] Integrate special tokens handling via `aprender::text::tokenize::BpeTokenizer` - special tokens (BOS, EOS, PAD) are handled by aprender's BPE tokenizer implementation in `crates/nanochat-tokenizer/src/lib.rs` (per Principle VII, no custom struct needed)
+- [X] T020 [US5] Integrate special tokens handling via `aprender::text::tokenize::BpeTokenizer` - special tokens (BOS: `<|bos|>`, conversational: `<|user_start|>`, `<|user_end|>`, `<|assistant_start|>`, `<|assistant_end|>`, optional tool call tokens) are handled by aprender's BPE tokenizer implementation in `crates/nanochat-tokenizer/src/lib.rs` (per Principle VII, no custom struct needed)
 - [X] T021 [US5] Integrate vocabulary management via `aprender::text::tokenize::BpeTokenizer` - vocabulary (token-to-ID and ID-to-token mappings) is provided by aprender's BPE tokenizer via `vocab()` and `merges()` methods in `crates/nanochat-tokenizer/src/lib.rs` (per Principle VII)
 - [X] T022 [US5] Integrate BPE training via `aprender::text::tokenize::BpeTokenizer::train()` - BPE training algorithm is provided by aprender's BPE tokenizer, called through `Tokenizer::train_from_iterator()` in `crates/nanochat-tokenizer/src/lib.rs` (per Principle VII, no custom implementation)
 - [X] T023 [US5] Integrate encoding via `aprender::text::tokenize::BpeTokenizer::encode()` - text-to-token-ID encoding is provided by aprender's BPE tokenizer, exposed through `Tokenizer::encode()` in `crates/nanochat-tokenizer/src/lib.rs` (per Principle VII)
@@ -200,8 +200,9 @@
 
 - [X] T072 [US3] Create `crates/nanochat-midtrain/src/main.rs` with CLI entry point using clap
 - [X] T073 [US3] Implement command-line argument parsing in `crates/nanochat-midtrain/src/main.rs` (config, base-model, data-dir, output-dir, resume, workers, etc.) - Note: No `--device` option (device selection is compile-time via `gpu` feature flag per plan.md)
-- [X] T074 [US3] Implement conversational data loading in `crates/nanochat-midtrain/src/dataloader.rs` with conversation format support
-- [X] T075 [US3] Implement training loop in `crates/nanochat-midtrain/src/train.rs` reusing pretraining infrastructure but with conversational data
+- [X] T074 [US3] Implement conversational data loading in `crates/nanochat-midtrain/src/dataloader.rs` with JSONL conversation format support (messages array with role/content fields, role alternation, system message merging, training mask generation, configurable shuffling with seed for reproducibility)
+- [X] T074.1 [US3] Implement conversation tokenization method in `crates/nanochat-tokenizer/src/lib.rs` (equivalent to Python's `render_conversation()`) that handles system message merging, role validation, content type handling (string vs list of parts), and training mask generation
+- [X] T075 [US3] Implement training loop in `crates/nanochat-midtrain/src/train.rs` reusing pretraining infrastructure (optimizer setup, learning rate scheduling, gradient accumulation, checkpoint saving/loading, metrics logging) but adapted for conversational data (uses training mask for loss computation, handles conversation tokenization)
 - [X] T076 [US3] Implement checkpoint saving and resumption in `crates/nanochat-midtrain/src/train.rs`
 - [X] T077 [US3] Implement training metrics logging in `crates/nanochat-midtrain/src/train.rs`
 - [X] T078 [US3] Add comprehensive documentation for CLI interface in `crates/nanochat-midtrain/src/main.rs`

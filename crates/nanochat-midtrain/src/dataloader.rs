@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result};
 use aprender::autograd::Tensor;
-use nanochat_tokenizer::Tokenizer;
+use nanochat_tokenizer::{Conversation, Tokenizer};
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
@@ -10,19 +10,6 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
-
-/// Conversation message structure
-#[derive(Debug, Clone, Deserialize)]
-struct Message {
-    role: String,
-    content: String,
-}
-
-/// Conversation structure from JSONL
-#[derive(Debug, Clone, Deserialize)]
-struct Conversation {
-    messages: Vec<Message>,
-}
 
 /// DataLoader state for checkpointing
 ///
@@ -48,7 +35,7 @@ pub struct ConversationDataLoader {
     #[allow(dead_code)]
     num_workers: usize,
     conversations: Vec<Conversation>,
-    token_sequences: Vec<Vec<u32>>,
+    tokenized_conversations: Vec<(Vec<u32>, Vec<u8>)>, // (token_ids, training_mask)
     current_pos: usize,
     rng: StdRng,
     rng_seed: u64,
@@ -76,9 +63,14 @@ impl ConversationDataLoader {
         let conversations =
             Self::load_conversations(data_dir).context("Failed to load conversations")?;
 
-        // Convert conversations to token sequences
-        let token_sequences = Self::conversations_to_sequences(&conversations, &tokenizer)
-            .context("Failed to convert conversations to token sequences")?;
+        // Tokenize conversations using render_conversation() (per remediation plan T074.1)
+        let mut tokenized_conversations = Vec::new();
+        for conversation in &conversations {
+            let (ids, mask) = tokenizer
+                .render_conversation(conversation, seq_len)
+                .context("Failed to tokenize conversation with render_conversation()")?;
+            tokenized_conversations.push((ids, mask));
+        }
 
         // Initialize RNG with provided seed or generate from entropy
         // Uses StdRng with SeedableRng::seed_from_u64() per Principle VII
@@ -90,15 +82,25 @@ impl ConversationDataLoader {
                 .expect("Time went backwards")
                 .as_secs()
         });
-        let rng = StdRng::seed_from_u64(rng_seed);
+        let mut rng = StdRng::seed_from_u64(rng_seed);
+
+        // Shuffle conversations
+        let mut indices: Vec<usize> = (0..conversations.len()).collect();
+        indices.shuffle(&mut rng);
+
+        // Reorder conversations and tokenized data according to shuffled indices
+        let shuffled_conversations: Vec<Conversation> =
+            indices.iter().map(|&i| conversations[i].clone()).collect();
+        let shuffled_tokenized: Vec<(Vec<u32>, Vec<u8>)> =
+            indices.iter().map(|&i| tokenized_conversations[i].clone()).collect();
 
         Ok(Self {
             tokenizer,
             batch_size,
             seq_len,
             num_workers,
-            conversations,
-            token_sequences,
+            conversations: shuffled_conversations,
+            tokenized_conversations: shuffled_tokenized,
             current_pos: 0,
             rng,
             rng_seed,
@@ -149,115 +151,109 @@ impl ConversationDataLoader {
         Ok(conversations)
     }
 
-    /// Convert conversations to token sequences
+    /// Get the next batch (inputs, targets, and training mask)
     ///
-    /// Formats conversations as: <|user|>content<|assistant|>content...
-    /// This matches the format expected for conversational fine-tuning.
-    fn conversations_to_sequences(
-        conversations: &[Conversation],
-        tokenizer: &Tokenizer,
-    ) -> Result<Vec<Vec<u32>>> {
-        let mut sequences = Vec::new();
-
-        for conversation in conversations {
-            // Format conversation as a single string
-            let mut formatted = String::new();
-
-            for message in &conversation.messages {
-                // Format: <|role|>content
-                // In practice, you might want to use special tokens from the tokenizer
-                // For now, we'll use a simple format
-                formatted.push_str(&format!("<|{}|>", message.role));
-                formatted.push_str(&message.content);
-            }
-
-            // Tokenize the formatted conversation
-            let tokens = tokenizer.encode(&formatted).context("Failed to tokenize conversation")?;
-
-            if !tokens.is_empty() {
-                sequences.push(tokens);
-            }
-        }
-
-        Ok(sequences)
-    }
-
-    /// Get the next batch (inputs and targets)
+    /// Returns a tuple of (inputs, targets, mask) tensors:
+    /// - inputs: [batch_size, seq_len] - input token IDs
+    /// - targets: [batch_size, seq_len] - target token IDs (shifted by 1)
+    /// - mask: [batch_size, seq_len] - training mask (1.0 for assistant tokens, 0.0 for others)
     ///
-    /// Returns a tuple of (inputs, targets) tensors, both of shape [batch_size, seq_len].
-    /// Targets are inputs shifted by 1 position for next-token prediction.
-    /// Returns None when all data has been consumed.
-    pub fn next_batch(&mut self) -> Result<Option<(Tensor, Tensor)>> {
-        if self.token_sequences.is_empty() {
+    /// Returns None when all conversations have been consumed.
+    ///
+    /// # Remediation Plan Compliance
+    /// Per FR-022.6 and T074.1, uses render_conversation() for proper tokenization
+    /// and generates training mask where mask=1 for assistant tokens to train on.
+    pub fn next_batch(&mut self) -> Result<Option<(Tensor, Tensor, Tensor)>> {
+        if self.tokenized_conversations.is_empty() {
             return Ok(None);
         }
 
-        // Check if we have enough sequences for a batch
-        if self.current_pos >= self.token_sequences.len() {
-            // Reset position and shuffle for next epoch
+        // Check if we have enough conversations for a batch
+        if self.current_pos >= self.tokenized_conversations.len() {
+            // Reset and reshuffle for next epoch
             self.current_pos = 0;
             self.shuffle();
+            if self.current_pos >= self.tokenized_conversations.len() {
+                return Ok(None);
+            }
         }
 
-        // Extract sequences for the batch
         let mut inputs_data = Vec::new();
         let mut targets_data = Vec::new();
+        let mut mask_data = Vec::new();
 
         for _ in 0..self.batch_size {
-            if self.current_pos >= self.token_sequences.len() {
-                // Not enough sequences, pad with zeros
-                inputs_data.extend(vec![0.0; self.seq_len]);
-                targets_data.extend(vec![0.0; self.seq_len]);
+            if self.current_pos >= self.tokenized_conversations.len() {
+                // Pad with zeros if we run out of conversations
+                inputs_data.extend(std::iter::repeat_n(0.0, self.seq_len));
+                targets_data.extend(std::iter::repeat_n(0.0, self.seq_len));
+                mask_data.extend(std::iter::repeat_n(0.0, self.seq_len));
                 continue;
             }
 
-            let sequence = &self.token_sequences[self.current_pos];
+            let (ids, mask) = &self.tokenized_conversations[self.current_pos];
             self.current_pos += 1;
 
-            // Extract inputs and targets (shifted by 1)
-            if sequence.len() > self.seq_len {
-                // Enough tokens: inputs = [0..seq_len], targets = [1..seq_len+1]
-                inputs_data.extend(sequence[..self.seq_len].iter().map(|&id| id as f32));
-                targets_data.extend(sequence[1..=self.seq_len].iter().map(|&id| id as f32));
+            // Extract sequence (truncate or pad to seq_len)
+            let seq_len_actual = ids.len().min(self.seq_len);
+            let ids_slice = &ids[..seq_len_actual];
+            let mask_slice = &mask[..seq_len_actual];
+
+            // Inputs: [0..seq_len-1]
+            // Targets: [1..seq_len] (shifted by 1)
+            // Mask: [0..seq_len-1] (for inputs)
+            if seq_len_actual > 0 {
+                // Inputs
+                if seq_len_actual > 1 {
+                    inputs_data.extend(ids_slice[..seq_len_actual - 1].iter().map(|&id| id as f32));
+                }
+                // Pad if needed
+                let pad_len = self.seq_len.saturating_sub(seq_len_actual.saturating_sub(1));
+                inputs_data.extend(std::iter::repeat_n(0.0, pad_len));
+
+                // Targets (shifted by 1)
+                if seq_len_actual > 1 {
+                    targets_data.extend(ids_slice[1..seq_len_actual].iter().map(|&id| id as f32));
+                }
+                // Pad if needed
+                targets_data.extend(std::iter::repeat_n(0.0, pad_len));
+
+                // Mask (for inputs, same length as inputs)
+                if seq_len_actual > 1 {
+                    mask_data.extend(mask_slice[..seq_len_actual - 1].iter().map(|&m| m as f32));
+                }
+                // Pad if needed
+                mask_data.extend(std::iter::repeat_n(0.0, pad_len));
             } else {
-                // Not enough tokens, pad with zeros
-                let mut input_seq = sequence[..sequence.len().saturating_sub(1)]
-                    .iter()
-                    .map(|&id| id as f32)
-                    .collect::<Vec<_>>();
-                input_seq.resize(self.seq_len, 0.0);
-
-                let mut target_seq = sequence[1..].iter().map(|&id| id as f32).collect::<Vec<_>>();
-                target_seq.resize(self.seq_len, 0.0);
-
-                inputs_data.extend(input_seq);
-                targets_data.extend(target_seq);
+                // Empty conversation - pad with zeros
+                inputs_data.extend(std::iter::repeat_n(0.0, self.seq_len));
+                targets_data.extend(std::iter::repeat_n(0.0, self.seq_len));
+                mask_data.extend(std::iter::repeat_n(0.0, self.seq_len));
             }
         }
 
         // Create tensors
         let inputs = Tensor::new(&inputs_data, &[self.batch_size, self.seq_len]);
         let targets = Tensor::new(&targets_data, &[self.batch_size, self.seq_len]);
+        let mask = Tensor::new(&mask_data, &[self.batch_size, self.seq_len]);
 
-        Ok(Some((inputs, targets)))
+        Ok(Some((inputs, targets, mask)))
     }
 
-    /// Shuffle the conversation sequences
+    /// Shuffle conversations
     fn shuffle(&mut self) {
-        // Shuffle both conversations and token_sequences together
         let mut indices: Vec<usize> = (0..self.conversations.len()).collect();
         indices.shuffle(&mut self.rng);
 
-        let mut new_conversations = Vec::new();
-        let mut new_sequences = Vec::new();
-
+        // Reorder both conversations and tokenized data
+        let mut shuffled_conversations = Vec::new();
+        let mut shuffled_tokenized = Vec::new();
         for &idx in &indices {
-            new_conversations.push(self.conversations[idx].clone());
-            new_sequences.push(self.token_sequences[idx].clone());
+            shuffled_conversations.push(self.conversations[idx].clone());
+            shuffled_tokenized.push(self.tokenized_conversations[idx].clone());
         }
-
-        self.conversations = new_conversations;
-        self.token_sequences = new_sequences;
+        self.conversations = shuffled_conversations;
+        self.tokenized_conversations = shuffled_tokenized;
     }
 
     /// Get batch size
