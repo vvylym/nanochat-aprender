@@ -221,19 +221,19 @@
 
 ### Tests for SFT (Write First)
 
-- [ ] T080 [P] [US3] Create unit test for instruction data loading in `crates/nanochat-sft/tests/test_dataloader.rs`
-- [ ] T081 [P] [US3] Create integration test for SFT training loop in `crates/nanochat-sft/tests/test_train.rs`
+- [X] T080 [P] [US3] Create unit test for instruction data loading in `crates/nanochat-sft/tests/test_dataloader.rs`
+- [X] T081 [P] [US3] Create integration test for SFT training loop in `crates/nanochat-sft/tests/test_train.rs`
 
 ### Implementation for SFT
 
-- [ ] T082 [US3] Create `crates/nanochat-sft/src/main.rs` with CLI entry point using clap
-- [ ] T083 [US3] Implement command-line argument parsing in `crates/nanochat-sft/src/main.rs` (config, base-model, data-dir, output-dir, resume, workers, etc.) - Note: No `--device` option (device selection is compile-time via `gpu` feature flag per plan.md)
-- [ ] T084 [US3] Implement instruction-following data loading in `crates/nanochat-sft/src/dataloader.rs` with instruction-response format support
-- [ ] T085 [US3] Implement training loop in `crates/nanochat-sft/src/train.rs` reusing training infrastructure but with instruction data
-- [ ] T086 [US3] Implement checkpoint saving and resumption in `crates/nanochat-sft/src/train.rs`
-- [ ] T087 [US3] Implement training metrics logging in `crates/nanochat-sft/src/train.rs`
-- [ ] T088 [US3] Add comprehensive documentation for CLI interface in `crates/nanochat-sft/src/main.rs`
-- [ ] T089 [US3] Add error handling for training failures in `crates/nanochat-sft/src/train.rs`
+- [X] T082 [US3] Create `crates/nanochat-sft/src/main.rs` with CLI entry point using clap
+- [X] T083 [US3] Implement command-line argument parsing in `crates/nanochat-sft/src/main.rs` (config, base-model, data-dir, output-dir, resume, workers, etc.) - Note: No `--device` option (device selection is compile-time via `gpu` feature flag per plan.md)
+- [X] T084 [US3] Implement instruction-following data loading in `crates/nanochat-sft/src/dataloader.rs` with instruction-response format support
+- [X] T085 [US3] Implement training loop in `crates/nanochat-sft/src/train.rs` reusing training infrastructure but with instruction data
+- [X] T086 [US3] Implement checkpoint saving and resumption in `crates/nanochat-sft/src/train.rs`
+- [X] T087 [US3] Implement training metrics logging in `crates/nanochat-sft/src/train.rs`
+- [X] T088 [US3] Add comprehensive documentation for CLI interface in `crates/nanochat-sft/src/main.rs`
+- [X] T089 [US3] Add error handling for training failures in `crates/nanochat-sft/src/train.rs`
 
 **Checkpoint**: SFT crate complete, can fine-tune mid-trained model for instruction following
 
