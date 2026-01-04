@@ -248,25 +248,25 @@
 
 ### Tests for Evaluation (Write First)
 
-- [ ] T090 [P] [US4] Create unit test for CORE benchmark in `crates/nanochat-eval/tests/test_core.rs`
-- [ ] T091 [P] [US4] Create unit test for ARC benchmark in `crates/nanochat-eval/tests/test_arc.rs`
-- [ ] T092 [P] [US4] Create unit test for GSM8K benchmark in `crates/nanochat-eval/tests/test_gsm8k.rs`
-- [ ] T093 [P] [US4] Create unit test for report generation in `crates/nanochat-eval/tests/test_report.rs`
+- [X] T090 [P] [US4] Create unit test for CORE benchmark in `crates/nanochat-eval/tests/test_core.rs`
+- [X] T091 [P] [US4] Create unit test for ARC benchmark in `crates/nanochat-eval/tests/test_arc.rs`
+- [X] T092 [P] [US4] Create unit test for GSM8K benchmark in `crates/nanochat-eval/tests/test_gsm8k.rs`
+- [X] T093 [P] [US4] Create unit test for report generation in `crates/nanochat-eval/tests/test_report.rs`
 
 ### Implementation for Evaluation
 
-- [ ] T094 [US4] Create `crates/nanochat-eval/src/lib.rs` with public API exports
-- [ ] T095 [US4] Implement CORE benchmark evaluation in `crates/nanochat-eval/src/core.rs` following reference implementation
-- [ ] T096 [US4] Implement ARC (Easy and Challenge) benchmark evaluation in `crates/nanochat-eval/src/arc.rs`
-- [ ] T097 [US4] Implement GSM8K math reasoning benchmark evaluation in `crates/nanochat-eval/src/gsm8k.rs`
-- [ ] T098 [US4] Implement HumanEval code generation benchmark evaluation in `crates/nanochat-eval/src/humaneval.rs`
-- [ ] T099 [US4] Implement MMLU knowledge benchmark evaluation in `crates/nanochat-eval/src/mmlu.rs`
-- [ ] T100 [US4] Implement ChatCORE conversational benchmark evaluation in `crates/nanochat-eval/src/chatcore.rs`
-- [ ] T101 [US4] Implement evaluation report generation in `crates/nanochat-eval/src/report.rs` with scores and metrics
-- [ ] T102 [US4] Create `crates/nanochat-eval/src/main.rs` with CLI entry point using clap
-- [ ] T103 [US4] Implement command-line argument parsing in `crates/nanochat-eval/src/main.rs` (model, benchmarks, output-dir, batch-size, etc.) - Note: No `--device` option (device selection is compile-time via `gpu` feature flag per plan.md)
-- [ ] T104 [US4] Add comprehensive documentation for all benchmarks and CLI interface in `crates/nanochat-eval/src/lib.rs`
-- [ ] T105 [US4] Add error handling for benchmark execution failures in `crates/nanochat-eval/src/lib.rs`
+- [X] T094 [US4] Create `crates/nanochat-eval/src/lib.rs` with public API exports
+- [X] T095 [US4] Implement CORE benchmark evaluation in `crates/nanochat-eval/src/core.rs` following reference implementation
+- [X] T096 [US4] Implement ARC (Easy and Challenge) benchmark evaluation in `crates/nanochat-eval/src/arc.rs`
+- [X] T097 [US4] Implement GSM8K math reasoning benchmark evaluation in `crates/nanochat-eval/src/gsm8k.rs`
+- [X] T098 [US4] Implement HumanEval code generation benchmark evaluation in `crates/nanochat-eval/src/humaneval.rs`
+- [X] T099 [US4] Implement MMLU knowledge benchmark evaluation in `crates/nanochat-eval/src/mmlu.rs`
+- [X] T100 [US4] Implement ChatCORE conversational benchmark evaluation in `crates/nanochat-eval/src/chatcore.rs`
+- [X] T101 [US4] Implement evaluation report generation in `crates/nanochat-eval/src/report.rs` with scores and metrics
+- [X] T102 [US4] Create `crates/nanochat-eval/src/main.rs` with CLI entry point using clap
+- [X] T103 [US4] Implement command-line argument parsing in `crates/nanochat-eval/src/main.rs` (model, benchmarks, output-dir, batch-size, etc.) - Note: No `--device` option (device selection is compile-time via `gpu` feature flag per plan.md)
+- [X] T104 [US4] Add comprehensive documentation for all benchmarks and CLI interface in `crates/nanochat-eval/src/lib.rs`
+- [X] T105 [US4] Add error handling for benchmark execution failures in `crates/nanochat-eval/src/lib.rs`
 
 **Checkpoint**: Evaluation crate complete, can evaluate models on all standard benchmarks and generate reports
 
