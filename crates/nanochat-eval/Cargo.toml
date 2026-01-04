@@ -25,9 +25,11 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
+chrono = "0.4"
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
+tempfile = "3"
 
 [features]
 default = ["cpu-only"]
